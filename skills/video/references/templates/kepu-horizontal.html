@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- hara-video seed: 科普横屏 1920×1080. 章节卡 + 内容页 + 数据卡三种页型. -->
+<html>
+<head><meta charset="utf-8">
+<style>
+  :root{
+    --bg:#f7f5f0; --ink:#1c1a17; --accent:#b0322a;   /* [REPLACE] editorial tokens */
+    --font-serif:"Source Han Serif SC","Noto Serif SC","Songti SC",serif;
+    --font-sans:"PingFang SC","Source Han Sans SC","Noto Sans SC",sans-serif;
+  }
+  *{margin:0;box-sizing:border-box}
+  #stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--bg);font-family:var(--font-sans);color:var(--ink)}
+  .page{position:absolute;inset:0;padding:120px 160px;opacity:0}
+  .chapter{display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+  .chapter .no{font-family:var(--font-serif);font-size:44px;color:var(--accent);letter-spacing:.3em}
+  .chapter h1{font-family:var(--font-serif);font-size:120px;font-weight:700;margin-top:24px}
+  .content h2{font-size:56px;font-weight:800;margin-bottom:40px}
+  .content p{font-size:40px;line-height:1.7;max-width:1200px}
+  .datacard{position:absolute;right:160px;top:300px;width:520px;padding:48px;background:#fff;border:1px solid #e5e0d5;border-radius:16px}
+  .datacard .num{font-size:96px;font-weight:900;color:var(--accent)}
+  .datacard .label{font-size:32px;opacity:.7;margin-top:8px}
+</style></head>
+<body>
+<div id="stage" data-composition-id="kepu" data-width="1920" data-height="1080">
+  <section class="page chapter" id="ch1"><div class="no">壹</div><h1>[REPLACE] 章节标题</h1></section>
+  <section class="page content" id="c1">
+    <h2>[REPLACE] 小节标题</h2>
+    <p>[REPLACE] 正文段落 —— 每 60-90s 一个小节,口播超过 15s 必须切视觉。</p>
+    <div class="datacard"><div class="num">[REPLACE]%</div><div class="label">[REPLACE] 数据说明</div></div>
+  </section>
+
+  <audio id="vo" data-start="0" data-duration="90" data-track-index="0" src="assets/voice.wav"></audio>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo("#ch1", { opacity: 0 }, { opacity: 1, duration: .5 }, 0)
+      .to("#ch1", { opacity: 0, duration: .4 }, 4)
+      .fromTo("#c1", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: .5 }, 4.4)
+      .fromTo("#c1 .datacard", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: .45 }, 8);
+    tl.set({}, {}, 90);
+    window.__timelines["kepu"] = tl;
+  </script>
+</div>
+</body></html>

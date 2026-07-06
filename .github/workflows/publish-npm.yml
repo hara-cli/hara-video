@@ -1,0 +1,39 @@
+# Publish @nanhara/hara-video to npm on a version tag (v*) — so "release to GitHub" (push a tag, or cut a
+# GitHub Release) ships to npm — plus a manual "Run workflow" button. hara-video is zero-dependency asset +
+# preview code, so there's no install/build/test step; npm publish packs the files in package.json `files`.
+#
+# Auth: the NPM_TOKEN repo secret (a granular token with publish rights to @nanhara AND "Bypass two-factor
+# authentication (2FA)" enabled — CI can't answer an OTP). setup-node writes an .npmrc using NODE_AUTH_TOKEN.
+# Idempotent: exits green if the version is already on npm.
+name: publish-npm
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org/
+      - name: Publish to npm (idempotent)
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set +e
+          out=$(npm publish --registry https://registry.npmjs.org/ 2>&1); code=$?
+          echo "$out"
+          if [ $code -eq 0 ]; then echo "✓ published"; exit 0; fi
+          if echo "$out" | grep -qiE "cannot publish over|previously published|EPUBLISHCONFLICT|409 Conflict"; then
+            echo "✓ auth OK — this version is already on npm; nothing to publish"; exit 0
+          fi
+          echo "✗ publish failed (auth or other error above)"; exit 1

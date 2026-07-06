@@ -1,0 +1,7 @@
+{
+  "name": "video",
+  "version": "0.1.0",
+  "description": "Video production in the hara CLI — script → local TTS → captions → rendered MP4 on the HyperFrames engine, with curated templates and platform presets (Douyin/Bilibili/YouTube/Shorts).",
+  "skills": ["skills"],
+  "bin": { "hara-video": "bin/hara-video.mjs" }
+}
