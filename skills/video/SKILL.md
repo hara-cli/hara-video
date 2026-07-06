@@ -48,7 +48,8 @@ script before spending render time (a bad script wastes everything downstream).
 - Have an SRT instead? `hara-video srt subs.srt --words` converts it to the same JSON shape.
 
 ### Stage 4 — Compose
-- Start from a seed in `references/templates/` (copy, then customize) — never from a blank file.
+- Start from a seed — `hara-video init <koubo|promo|kepu> <dir>` scaffolds it (copies the template +
+  an assets/ dir); never author from a blank file. Then customize.
 - Bind the script's scenes to the timeline; captions per `references/captions.md` (Chinese
   typography rules live there — font stacks, line length, punctuation).
 - `npx hyperframes lint <file>` must pass. Then `npx hyperframes inspect <file>` — fix any text

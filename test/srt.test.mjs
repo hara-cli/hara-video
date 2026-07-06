@@ -40,3 +40,27 @@ test("srtToTranscript: Whisper-shaped output; --words opt-in", () => {
   assert.equal(withWords.segments[0].words.length, 2);
   assert.equal(withWords.segments[0].words[0].word, "你");
 });
+
+// init scaffold — the bin copies a seed + makes assets/. Test the FILE-LEVEL contract (no CLI spawn).
+import { mkdtempSync, existsSync, readFileSync as rf, mkdirSync as mk, cpSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join as pj, resolve as pr, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+test("init: each seed exists, is lint-shaped (has data-start + composition-id), copyable into a project", () => {
+  const root = pr(dirname(fileURLToPath(import.meta.url)), "..");
+  const seeds = { koubo: "koubo-vertical.html", promo: "promo-vertical.html", kepu: "kepu-horizontal.html" };
+  for (const [name, file] of Object.entries(seeds)) {
+    const src = pj(root, "skills/video/references/templates", file);
+    assert.ok(existsSync(src), `seed present: ${name}`);
+    const html = rf(src, "utf8");
+    assert.match(html, /data-start="0"/, `${name}: root has data-start (lint P0)`);
+    assert.match(html, /data-composition-id="/, `${name}: has a composition id`);
+    assert.match(html, /window\.__timelines/, `${name}: registers a GSAP timeline`);
+    // simulate the scaffold copy
+    const dir = mkdtempSync(pj(tmpdir(), "hv-init-"));
+    mk(pj(dir, "assets"), { recursive: true });
+    cpSync(src, pj(dir, "index.html"));
+    assert.ok(existsSync(pj(dir, "index.html")) && existsSync(pj(dir, "assets")), `${name}: scaffold shape`);
+  }
+});

@@ -4,6 +4,7 @@
 //   install [--claude|--codex]   link skills/video into ~/.claude/skills or ~/.agents/skills
 //   uninstall [--claude|--codex] undo (only ever touches our own link/copy)
 //   doctor                       check the engine chain (node / ffmpeg / hyperframes / chrome dl)
+//   init [koubo|promo|kepu] [dir]  scaffold a video project from a seed (copies a template + assets/ dir)
 //   srt <file.srt>               convert an SRT into HyperFrames caption JSON (stdout)
 import { spawnSync, execFileSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, symlinkSync, rmSync, cpSync, realpathSync, readFileSync } from "node:fs";
@@ -129,6 +130,7 @@ function usage() {
                                             --codex   → link skills/video → ~/.agents/skills/video
                           add --copy to copy instead of symlink · --force to replace an existing dir
   hara-video uninstall  [--claude|--codex]  undo the matching install
+  hara-video init [koubo|promo|kepu] [dir]  scaffold a project from a seed (default: koubo → ./video)
   hara-video doctor                         check node / ffmpeg / hyperframes availability
   hara-video srt <file.srt>                 SRT → HyperFrames caption JSON (stdout)
 
@@ -158,6 +160,24 @@ if (cmd === "install") {
   if (!ff) console.log("    install: brew install ffmpeg");
   if (!hf) console.log("    hyperframes will be fetched on first use (npx hyperframes init)");
   console.log(ff && hf ? "Ready." : "Fix the ✗ items above, then re-run.");
+} else if (cmd === "init") {
+  // Scaffold a ready-to-render HyperFrames project from one of our seeds. Fill the [REPLACE] marks +
+  // drop assets in — no blank-file starts, no manual cp of templates.
+  const seeds = { koubo: "koubo-vertical.html", promo: "promo-vertical.html", kepu: "kepu-horizontal.html" };
+  const which = positional() && seeds[positional()] ? positional() : "koubo";
+  const dirArg = rest.find((a) => !a.startsWith("--") && !seeds[a]);
+  const dir = resolve(dirArg || "video");
+  if (existsSync(join(dir, "index.html")) && !flag("force")) {
+    console.error(`✗ ${join(dir, "index.html")} already exists — pass --force to overwrite, or choose another dir.`);
+    process.exit(1);
+  }
+  mkdirSync(join(dir, "assets"), { recursive: true });
+  cpSync(join(root, "skills", "video", "references", "templates", seeds[which]), join(dir, "index.html"));
+  console.log(`✓ scaffolded a "${which}" project → ${dir}`);
+  console.log(`  1. drop your voice.wav / bg image / bgm into ${join(dir, "assets")}/`);
+  console.log(`  2. edit index.html — replace every [REPLACE], bind scenes to the timeline`);
+  console.log(`  3. npx hyperframes lint ${dir} · preview ${dir} · render ${dir} --output out.mp4`);
+  console.log(`  (in an agent: just ask it to "make a ${which} video about …" — the video skill drives all of this)`);
 } else if (cmd === "srt") {
   const f = positional();
   if (!f) { console.error("usage: hara-video srt <file.srt>"); process.exit(2); }
