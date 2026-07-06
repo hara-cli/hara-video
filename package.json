@@ -3,10 +3,25 @@
   "version": "0.1.0",
   "description": "Produce videos from your terminal — in hara, Claude Code, or Codex. Describe the video; your agent scripts it, voices it (local TTS), captions it, and renders a real MP4 on the open-source HyperFrames engine — with curated templates, platform presets, and Chinese-first captioning.",
   "type": "module",
-  "bin": { "hara-video": "bin/hara-video.mjs" },
-  "files": ["bin", "scripts", "skills", "plugin.json"],
-  "scripts": { "test": "node --test test/*.test.mjs" },
+  "bin": {
+    "hara-video": "bin/hara-video.mjs"
+  },
+  "files": [
+    "bin",
+    "scripts",
+    "skills",
+    "plugin.json"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "license": "Apache-2.0",
-  "repository": { "type": "git", "url": "https://github.com/hara-cli/hara-video" },
-  "homepage": "https://hara.run"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hara-cli/hara-video"
+  },
+  "homepage": "https://hara.run",
+  "publishConfig": {
+    "access": "public"
+  }
 }
