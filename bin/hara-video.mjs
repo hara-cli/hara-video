@@ -15,7 +15,8 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const [cmd, ...rest] = process.argv.slice(2);
 function flag(name) { return rest.includes(`--${name}`); }
-function positional() { return rest.find((a) => !a.startsWith("--")); }
+function positional() { return rest.find((a) => !a.startsWith("-")); }
+function argVal(names) { for (const n of names) { const i = rest.indexOf(n); if (i >= 0 && rest[i + 1]) return rest[i + 1]; } return null; }
 
 const skillSrc = join(root, "skills", "video");
 function claudeSkillDir() { return join(homedir(), ".claude", "skills", "video"); }
@@ -133,6 +134,10 @@ function usage() {
   hara-video init [koubo|promo|kepu] [dir]  scaffold a project from a seed (default: koubo → ./video)
   hara-video edit [dir]                     open the live web preview for editing (background server +
                                             browser; never blocks). Extra flags pass to hyperframes preview.
+  hara-video image "<prompt>" [-o out.png]  generate a still image via a pluggable backend
+                                            (--cmd / HARA_VIDEO_IMAGE_CMD template; auto-detects z-image)
+  hara-video tts   "<text>"   [-o out.wav]  generate voice via a pluggable backend
+                                            (HARA_VIDEO_TTS_CMD; falls back to local hyperframes tts)
   hara-video doctor                         check node / ffmpeg / hyperframes availability
   hara-video srt <file.srt>                 SRT → HyperFrames caption JSON (stdout)
 
@@ -212,6 +217,36 @@ if (cmd === "install") {
     console.log(`  Stop it: npx hyperframes preview --kill-all       ·   log: ${logPath}`);
     process.exit(0);
   })();
+} else if (cmd === "image" || cmd === "tts") {
+  // Pluggable generator: hara-video doesn't hardcode a vendor. The backend is a COMMAND TEMPLATE the user
+  // supplies (a local model, an API-wrapping script, anything), with {prompt}/{out} placeholders that are
+  // shell-quoted before substitution (data, never code — safe from injection). Resolution order:
+  // --cmd flag → env var → auto-detected default → guidance. This keeps local + API both open, BYO.
+  const isImg = cmd === "image";
+  const prompt = positional();
+  const outVal = argVal(["-o", "--out"]) || (isImg ? "image.png" : "voice.wav");
+  const cmdFlag = argVal(["--cmd"]);
+  const envVar = isImg ? "HARA_VIDEO_IMAGE_CMD" : "HARA_VIDEO_TTS_CMD";
+  if (!prompt) { console.error(`usage: hara-video ${cmd} "<${isImg ? "prompt" : "text"}>" [-o ${outVal}] [--cmd "<template>"]`); process.exit(2); }
+  // Auto-detect a sensible default only when nothing is configured.
+  const onPath = (b) => { try { execFileSync("bash", ["-c", `command -v ${b}`], { stdio: "ignore" }); return true; } catch { return false; } };
+  let tmpl = cmdFlag || process.env[envVar];
+  if (!tmpl && isImg && onPath("z-image")) tmpl = `z-image {prompt} -o {out}`;
+  if (!tmpl && !isImg && onPath("hyperframes")) tmpl = `hyperframes tts {prompt} -o {out}`;
+  if (!tmpl) {
+    console.error(`hara-video ${cmd}: no generator configured.
+  Set a command template (any local model, API script, or tool — {prompt}/{out} are auto-quoted):
+    export ${envVar}='${isImg ? "z-image {prompt} -o {out}" : "npx hyperframes tts {prompt} -o {out}"}'
+  or pass one:  hara-video ${cmd} "..." --cmd '<template>'
+  ${isImg ? "Examples — local codex-image: '~/.claude/skills/codex-image/scripts/gen-image.sh {prompt} {out}'; an API: your curl/script wrapper.\n  Local default (no key): npx hyperframes tts is for VOICE; for IMAGES install z-image or wire codex-image/an API." : "Local (no key): 'npx hyperframes tts {prompt} -o {out}'. API TTS (字节/Azure/ElevenLabs…): your script wrapper."}`);
+    process.exit(2);
+  }
+  const q = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
+  const command = tmpl.replaceAll("{prompt}", q(prompt)).replaceAll("{text}", q(prompt)).replaceAll("{out}", q(resolve(outVal)));
+  const r = spawnSync("bash", ["-c", command], { stdio: "inherit" });
+  if ((r.status ?? 1) === 0 && existsSync(resolve(outVal))) { console.log(`✓ ${cmd} → ${outVal}`); process.exit(0); }
+  console.error(`✗ ${cmd} failed (exit ${r.status ?? "?"})${existsSync(resolve(outVal)) ? "" : ` — no ${outVal} produced`}. Check the template: ${tmpl}`);
+  process.exit(r.status ?? 1);
 } else {
   usage();
 }

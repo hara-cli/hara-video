@@ -12,9 +12,14 @@ You author only the **composition HTML + assets**; the engine owns preview, timi
 **The three capabilities and how they relate (architecture, keep this straight):**
 1. **HTML-composed video (THE CORE)** — every video is an HTML composition you write. Captions,
    typography, motion, timeline: all yours, all reproducible, zero render fees.
-2. **AI-generated clips (ASSET LANE)** — text-to-video APIs (Seedance / Kling / user's vendor,
-   BYO key) produce *ingredients*: short clips you place as `<video>` elements INSIDE the
-   composition. Generation is never the final video; composition is. See `references/recipes/ai-clips.md`.
+2. **AI-generated assets (ASSET LANE)** — *ingredients* placed INSIDE the composition, never the final
+   video (generation is never the video; composition is):
+   - **Still images** (backgrounds, illustrations, icons) — `hara-video image "<prompt>" -o assets/x.png`.
+     Pluggable, BYO backend, no vendor lock-in: it uses `--cmd` / `HARA_VIDEO_IMAGE_CMD` (a `{prompt}`/
+     `{out}` command template — a local model like z-image, a codex-image wrapper, or any API script),
+     and auto-detects `z-image` on PATH. Place the result as an `<img>` / CSS background.
+   - **Video clips** — text-to-video APIs (Seedance / Kling / user's vendor, BYO key) as `<video>`
+     elements. See `references/recipes/ai-clips.md`.
 3. **Visual editing (CONVERSATIONAL)** — the user watches the live preview (HyperFrames studio,
    hot-reload) and *tells you* the edits ("cut 2s off scene 2", "swap the BGM", "bigger captions").
    You edit the HTML; the preview updates in seconds. There is no drag-and-drop timeline — you are
@@ -43,7 +48,9 @@ Write the narration/on-screen script FIRST, as text, and show it. Rules in
 script before spending render time (a bad script wastes everything downstream).
 
 ### Stage 3 — Voice + timing
-- TTS: `npx hyperframes tts` (Kokoro, local, no key; has Mandarin voices) — or the user's audio.
+- TTS: local `npx hyperframes tts` (Kokoro, no key, Mandarin voices), OR `hara-video tts "<text>" -o
+  voice.wav` for a configured API TTS (`HARA_VIDEO_TTS_CMD` — 字节/Azure/ElevenLabs/…, BYO key), OR the
+  user's own audio. Same pluggable pattern as images: no vendor lock-in, local + API both open.
 - Timing: `npx hyperframes transcribe` (Whisper, word-level JSON) on the voice track.
 - Have an SRT instead? `hara-video srt subs.srt --words` converts it to the same JSON shape.
 
