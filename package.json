@@ -1,6 +1,6 @@
 {
   "name": "@nanhara/hara-video",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Produce videos from your terminal — in hara, Claude Code, or Codex. Describe the video; your agent scripts it, voices it (local TTS), captions it, and renders a real MP4 on the open-source HyperFrames engine — with curated templates, platform presets, and Chinese-first captioning.",
   "type": "module",
   "bin": {

@@ -52,12 +52,25 @@ script before spending render time (a bad script wastes everything downstream).
   an assets/ dir); never author from a blank file. Then customize.
 - Bind the script's scenes to the timeline; captions per `references/captions.md` (Chinese
   typography rules live there — font stacks, line length, punctuation).
-- `npx hyperframes lint <file>` must pass. Then `npx hyperframes inspect <file>` — fix any text
-  overflow/clipping it flags. These are your P0 gates, same spirit as design's checklist.
+- `npx hyperframes lint <DIR>` (the PROJECT DIRECTORY, not a single `.html` — it lints the whole
+  project; passing a file errors "Not a directory") must pass, then `npx hyperframes inspect <file>` —
+  fix any text overflow/clipping it flags. These are your P0 gates. **Determinism traps** to avoid when
+  you edit the HTML (the seed is already clean — don't reintroduce them): every timeline element needs
+  `data-start` (and `data-duration`); **no `Math.random()`** — it breaks deterministic rendering, use a
+  fixed/seeded value; an `<audio>` needs `data-start`/`data-duration` and its `src` file must exist; keep
+  a single root `data-composition-id`. Lint after each edit — cheaper than discovering it at render.
 
-### Stage 5 — Preview (the conversational edit loop)
-`npx hyperframes preview` → give the user the URL. Iterate on their feedback by editing the HTML
-(hot-reloads). Cheap loop — stay here until they're happy. Do NOT render until they approve.
+### Stage 5 — Preview + precision edit loop
+**`hara-video edit .`** opens the live preview — it starts the server IN THE BACKGROUND and opens the
+browser. **NEVER run `npx hyperframes preview` in the foreground**: it's a long-running server that never
+returns and will hang you (this is the classic "video generation got stuck"). Then iterate:
+- **They describe it** ("cut 2s off scene 2", "bigger captions") → you edit the HTML → it hot-reloads.
+- **They point at it (precision):** when they CLICK an element in the browser and ask for a nudge
+  ("left 20px", "start 0.5s later", "bigger"), run `npx hyperframes preview --selection --json` to read
+  exactly what they clicked — `sourceFile`, `target`, `boundingBox` (current x/y/w/h), `currentTime` —
+  then edit that element precisely. The browser selection is your handle; you stay the editor (no
+  drag-and-drop timeline).
+Cheap loop — stay here until they're happy. Do NOT render until they approve.
 
 ### Stage 6 — Render + deliver
 Render with the platform preset flags from `references/platforms.md`

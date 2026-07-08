@@ -6,10 +6,10 @@
 //   doctor                       check the engine chain (node / ffmpeg / hyperframes / chrome dl)
 //   init [koubo|promo|kepu] [dir]  scaffold a video project from a seed (copies a template + assets/ dir)
 //   srt <file.srt>               convert an SRT into HyperFrames caption JSON (stdout)
-import { spawnSync, execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, symlinkSync, rmSync, cpSync, realpathSync, readFileSync } from "node:fs";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
+import { existsSync, lstatSync, mkdirSync, symlinkSync, rmSync, cpSync, realpathSync, readFileSync, openSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -131,6 +131,8 @@ function usage() {
                           add --copy to copy instead of symlink · --force to replace an existing dir
   hara-video uninstall  [--claude|--codex]  undo the matching install
   hara-video init [koubo|promo|kepu] [dir]  scaffold a project from a seed (default: koubo → ./video)
+  hara-video edit [dir]                     open the live web preview for editing (background server +
+                                            browser; never blocks). Extra flags pass to hyperframes preview.
   hara-video doctor                         check node / ffmpeg / hyperframes availability
   hara-video srt <file.srt>                 SRT → HyperFrames caption JSON (stdout)
 
@@ -183,6 +185,33 @@ if (cmd === "install") {
   if (!f) { console.error("usage: hara-video srt <file.srt>"); process.exit(2); }
   const r = spawnSync("node", [join(root, "scripts", "srt-to-captions.mjs"), f], { stdio: "inherit" });
   process.exit(r.status ?? 0);
+} else if (cmd === "edit" || cmd === "preview") {
+  // Open the live web preview for editing. `hyperframes preview` is a LONG-RUNNING server that never
+  // exits — running it in the FOREGROUND is the classic "hara hangs during video generation". So we spawn
+  // it DETACHED (survives this process, never blocks the agent), let it open the browser itself, and tail
+  // its log briefly to surface the URL. Extra flags (--port, --no-open, --browser-path) pass through.
+  const dir = resolve(positional() || ".");
+  if (!existsSync(dir)) { console.error(`hara-video edit: no such directory: ${dir}`); process.exit(2); }
+  (async () => {
+    const logPath = join(tmpdir(), `hara-video-preview-${process.pid}.log`);
+    const out = openSync(logPath, "a");
+    const extra = rest.filter((a) => a.startsWith("--"));
+    const child = spawn("npx", ["--yes", "hyperframes", "preview", ...extra], { cwd: dir, detached: true, stdio: ["ignore", out, out] });
+    child.on("error", (e) => { console.error(`hara-video edit: could not start preview — ${e.message}`); process.exit(1); });
+    child.unref();
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    let url = "";
+    for (let i = 0; i < 20 && !url; i++) {
+      await sleep(500);
+      try { const m = readFileSync(logPath, "utf8").match(/https?:\/\/[^\s)"']+/); if (m) url = m[0]; } catch { /* not written yet */ }
+    }
+    console.log(`▶ preview running in the background (pid ${child.pid})${url ? ` — ${url}` : " — starting (browser will open; first run fetches the engine)"}`);
+    console.log(`  Edit the composition HTML; the preview hot-reloads. Do NOT run 'hyperframes preview' in the foreground — it never returns.`);
+    console.log(`  Precision edit: click an element in the browser, then read exactly what you clicked with:`);
+    console.log(`      npx hyperframes preview --selection --json   (→ sourceFile · target · boundingBox · currentTime)`);
+    console.log(`  Stop it: npx hyperframes preview --kill-all       ·   log: ${logPath}`);
+    process.exit(0);
+  })();
 } else {
   usage();
 }
