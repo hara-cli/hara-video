@@ -14,8 +14,10 @@ What this skill adds on top of the raw engine:
 - **Chinese-first captioning** — font stacks, line-length, punctuation and sync discipline, plus
   `hara-video srt` to convert any SRT into the engine's word-level caption JSON (a gap upstream).
 - **Platform presets** — 抖音 / 视频号 / 小红书 / B站 / YouTube / Shorts canvases, durations, render flags.
-- **AI-clip lane (roadmap)** — text-to-video clips (BYO key) as *ingredients* placed into compositions;
-  generation is never the final video, composition is.
+- **Pluggable asset backends (local *or* API, no vendor lock-in)** — `hara-video image` / `hara-video tts`
+  generate stills and voice through a command template you configure (a local model, a wrapper, or any
+  API). Generated images/clips are *ingredients* placed into the composition — generation is never the
+  final video, composition is.
 
 ## Install
 
@@ -39,7 +41,29 @@ pipeline and hands you a preview URL before anything renders.
 CLI helpers:
 
 ```bash
-hara-video srt subs.srt --words   # SRT → HyperFrames caption JSON (CJK per-character beats)
+hara-video edit .                      # live web preview for editing (background server + browser; never blocks)
+hara-video image "<prompt>" -o x.png   # generate a still image via your configured backend
+hara-video tts   "<text>"   -o v.wav   # generate voice via your configured backend
+hara-video srt subs.srt --words        # SRT → HyperFrames caption JSON (CJK per-character beats)
+```
+
+### Backends: images & voice (local *or* API — bring your own, no vendor lock-in)
+
+`hara-video image` / `tts` don't hardcode a vendor. They run a **command template** you supply, with
+`{prompt}` / `{out}` placeholders (shell-quoted for you, so a prompt can't inject). Configure via `--cmd`,
+or the env vars `HARA_VIDEO_IMAGE_CMD` / `HARA_VIDEO_TTS_CMD`; `hara-video image` also auto-detects
+`z-image` on PATH. A backend is just a command that reads a prompt/text and writes a file — local model
+or API, your choice.
+
+```bash
+# Image — pick ONE (a local model, a codex-image wrapper, or an API script):
+export HARA_VIDEO_IMAGE_CMD='z-image {prompt} -o {out}'          # a local image model on PATH
+export HARA_VIDEO_IMAGE_CMD='~/my-image.sh {prompt} {out}'       # your wrapper (local SD, codex-image, or a curl to an API)
+export HARA_IMAGE_SIZE=1080x1920                                 # portrait for 抖音/短; default 1920x1080
+
+# Voice — local (no key) or an API:
+export HARA_VIDEO_TTS_CMD='npx hyperframes tts {prompt} -o {out}'   # local Kokoro (Mandarin, no key) — the default fallback
+export HARA_VIDEO_TTS_CMD='~/my-tts.sh {prompt} {out}'             # your wrapper (a voice clone, or 字节/Azure/ElevenLabs API)
 ```
 
 ## License
