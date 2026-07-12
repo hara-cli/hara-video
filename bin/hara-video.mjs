@@ -7,7 +7,7 @@
 //   init [koubo|promo|kepu] [dir]  scaffold a video project from a seed (copies a template + assets/ dir)
 //   srt <file.srt>               convert an SRT into HyperFrames caption JSON (stdout)
 import { spawn, spawnSync, execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, symlinkSync, rmSync, cpSync, realpathSync, readFileSync, openSync } from "node:fs";
+import { existsSync, lstatSync, readlinkSync, mkdirSync, symlinkSync, rmSync, cpSync, realpathSync, readFileSync, openSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
