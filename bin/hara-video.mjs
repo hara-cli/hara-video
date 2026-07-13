@@ -11,6 +11,7 @@ import { existsSync, lstatSync, readlinkSync, mkdirSync, symlinkSync, rmSync, cp
 import { dirname, join, resolve } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { isSupportedNode } from "../scripts/node-version.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const [cmd, ...rest] = process.argv.slice(2);
@@ -138,8 +139,8 @@ function usage() {
                                             (--cmd / HARA_VIDEO_IMAGE_CMD template; auto-detects z-image)
   hara-video tts   "<text>"   [-o out.wav]  generate voice via a pluggable backend
                                             (HARA_VIDEO_TTS_CMD; falls back to local hyperframes tts)
-  hara-video doctor                         check node / ffmpeg / hyperframes availability
-  hara-video srt <file.srt>                 SRT → HyperFrames caption JSON (stdout)
+  hara-video doctor                         check Node >=22 / ffmpeg / hyperframes availability
+  hara-video srt <file.srt> [--words]       SRT → HyperFrames caption JSON (stdout)
 
 Engine: HyperFrames (Apache-2.0, npx hyperframes). The skill drives it; this helper just installs/checks.`);
 }
@@ -161,12 +162,17 @@ if (cmd === "install") {
     catch { console.log(`  ✗ ${name} — not found`); return false; }
   };
   console.log("hara-video doctor:");
-  check("node ≥22", "node", ["--version"]);
+  const nodeVersion = process.versions.node;
+  const nodeOk = isSupportedNode(nodeVersion);
+  console.log(nodeOk
+    ? `  ✓ Node v${nodeVersion} (>=22)`
+    : `  ✗ Node v${nodeVersion} — Node >=22 is required`);
   const ff = check("ffmpeg", "ffmpeg", ["-version"]);
   const hf = check("hyperframes (npx)", "npx", ["--yes", "hyperframes", "--version"]);
+  if (!nodeOk) console.log("    install: https://nodejs.org/ or use a version manager such as nvm");
   if (!ff) console.log("    install: brew install ffmpeg");
   if (!hf) console.log("    hyperframes will be fetched on first use (npx hyperframes init)");
-  console.log(ff && hf ? "Ready." : "Fix the ✗ items above, then re-run.");
+  console.log(nodeOk && ff && hf ? "Ready." : "Fix the ✗ items above, then re-run.");
 } else if (cmd === "init") {
   // Scaffold a ready-to-render HyperFrames project from one of our seeds. Fill the [REPLACE] marks +
   // drop assets in — no blank-file starts, no manual cp of templates.
@@ -187,9 +193,15 @@ if (cmd === "install") {
   console.log(`  (in an agent: just ask it to "make a ${which} video about …" — the video skill drives all of this)`);
 } else if (cmd === "srt") {
   const f = positional();
-  if (!f) { console.error("usage: hara-video srt <file.srt>"); process.exit(2); }
-  const r = spawnSync("node", [join(root, "scripts", "srt-to-captions.mjs"), f], { stdio: "inherit" });
-  process.exit(r.status ?? 0);
+  if (!f) { console.error("usage: hara-video srt <file.srt> [--words]"); process.exit(2); }
+  const args = [join(root, "scripts", "srt-to-captions.mjs"), f];
+  if (flag("words")) args.push("--words");
+  const r = spawnSync(process.execPath, args, { stdio: "inherit" });
+  if (r.error) {
+    console.error(`hara-video srt: could not start Node — ${r.error.message}`);
+    process.exit(1);
+  }
+  process.exit(r.status ?? 1);
 } else if (cmd === "edit" || cmd === "preview") {
   // Open the live web preview for editing. `hyperframes preview` is a LONG-RUNNING server that never
   // exits — running it in the FOREGROUND is the classic "hara hangs during video generation". So we spawn

@@ -1,26 +1,55 @@
-# Publish @nanhara/hara-video to npm on a version tag (v*) — so "release to GitHub" (push a tag, or cut a
-# GitHub Release) ships to npm — plus a manual "Run workflow" button. hara-video is zero-dependency asset +
-# preview code, so there's no install/build/test step; npm publish packs the files in package.json `files`.
-#
-# Auth: the NPM_TOKEN repo secret (a granular token with publish rights to @nanhara AND "Bypass two-factor
-# authentication (2FA)" enabled — CI can't answer an OTP). setup-node writes an .npmrc using NODE_AUTH_TOKEN.
-# Idempotent: exits green if the version is already on npm.
 name: publish-npm
 
 on:
   push:
+    branches: ["main", "master"]
     tags: ["v*"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  quality:
+    name: quality (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Validate release metadata
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+          const plugin = JSON.parse(readFileSync("plugin.json", "utf8"));
+          if (pkg.version !== plugin.version) {
+            throw new Error(`package.json (${pkg.version}) != plugin.json (${plugin.version})`);
+          }
+          const tag = process.env.GITHUB_REF?.startsWith("refs/tags/")
+            ? process.env.GITHUB_REF.slice("refs/tags/".length)
+            : null;
+          if (tag && tag !== `v${pkg.version}`) {
+            throw new Error(`tag (${tag}) != package version (v${pkg.version})`);
+          }
+          console.log(`release metadata OK: ${pkg.name}@${pkg.version}${tag ? ` / ${tag}` : ""}`);
+          NODE
+      - run: npm test
+      - run: npm pack --dry-run
+
   publish:
+    needs: quality
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           registry-url: https://registry.npmjs.org/
