@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // hara-video — local helper for the video plugin. Mirrors hara-design's proven install machinery:
-// the bundled skill (skills/video/) is exposed to a host CLI by symlink (default) or copy.
-//   install [--claude|--codex]   link skills/video into ~/.claude/skills or ~/.agents/skills
+// the bundled skills are exposed to a host CLI by symlink (default) or copy.
+//   install [--claude|--codex]   link skills/* into ~/.claude/skills or ~/.agents/skills
 //   uninstall [--claude|--codex] undo (only ever touches our own link/copy)
 //   doctor                       check the engine chain (node / ffmpeg / hyperframes / chrome dl)
 //   init [koubo|promo|kepu] [dir]  scaffold a video project from a seed (copies a template + assets/ dir)
 //   srt <file.srt>               convert an SRT into HyperFrames caption JSON (stdout)
 import { spawn, spawnSync, execFileSync } from "node:child_process";
-import { existsSync, lstatSync, readlinkSync, mkdirSync, symlinkSync, rmSync, cpSync, realpathSync, readFileSync, openSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, lstatSync, readlinkSync, mkdirSync, mkdtempSync, symlinkSync, rmSync, cpSync, realpathSync, readFileSync, openSync, renameSync, writeFileSync } from "node:fs";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { isSupportedNode } from "../scripts/node-version.mjs";
@@ -19,34 +19,75 @@ function flag(name) { return rest.includes(`--${name}`); }
 function positional() { return rest.find((a) => !a.startsWith("-")); }
 function argVal(names) { for (const n of names) { const i = rest.indexOf(n); if (i >= 0 && rest[i + 1]) return rest[i + 1]; } return null; }
 
-const skillSrc = join(root, "skills", "video");
-function claudeSkillDir() { return join(homedir(), ".claude", "skills", "video"); }
-function codexSkillDir() { return join(homedir(), ".agents", "skills", "video"); }
+const managedCopyMarker = ".hara-video-managed.json";
+const bundledSkills = ["video", "video-publish"].map((name) => ({
+  name,
+  source: join(root, "skills", name),
+}));
+function claudeSkillsDir() { return join(homedir(), ".claude", "skills"); }
+function codexSkillsDir() { return join(homedir(), ".agents", "skills"); }
+
+function selectedSkills() {
+  const requested = argVal(["--skill"]);
+  if (!requested) return bundledSkills;
+  const selected = bundledSkills.filter(({ name }) => name === requested);
+  if (!selected.length) {
+    console.error(`Unknown skill '${requested}'. Choose: ${bundledSkills.map(({ name }) => name).join(", ")}.`);
+    process.exit(2);
+  }
+  return selected;
+}
+
+function pathEntryExists(p) {
+  try { lstatSync(p); return true; }
+  catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+}
 
 // Is `p` a symlink that already points at our source skill dir? (idempotency check)
-function pointsAtSource(p) {
+function pointsAtSource(p, source) {
   try {
     if (!lstatSync(p).isSymbolicLink()) return false;
-    return realpathSync(p) === realpathSync(skillSrc);
+    return realpathSync(p) === realpathSync(source);
   } catch { return false; }
 }
 
-function isBrokenSymlink(p) {
-  try { lstatSync(p); return !existsSync(p); } catch { return false; }
+function isBrokenOurSymlink(p, source) {
+  // a dangling symlink we can't resolve — treat as ours only if its target string is our source
+  try { return lstatSync(p).isSymbolicLink() && readlinkSync(p) === source; } catch { return false; }
 }
 
-function isBrokenOurSymlink(p) {
-  // a dangling symlink we can't resolve — treat as ours only if its target string is our source
-  try { return lstatSync(p).isSymbolicLink() && readlinkSync(p) === skillSrc; } catch { return false; }
+function isManagedCopy(p, skillName) {
+  try {
+    const info = lstatSync(p);
+    if (!info.isDirectory() || info.isSymbolicLink()) return false;
+    const marker = join(p, managedCopyMarker);
+    const markerInfo = lstatSync(marker);
+    if (!markerInfo.isFile() || markerInfo.isSymbolicLink() || markerInfo.size > 4096 || markerInfo.nlink > 1) return false;
+    const parsed = JSON.parse(readFileSync(marker, "utf8"));
+    return parsed?.manager === "@nanhara/hara-video" && parsed?.skill === skillName;
+  } catch { return false; }
+}
+
+function isManagedEntry(dest, skill) {
+  return pointsAtSource(dest, skill.source)
+    || isBrokenOurSymlink(dest, skill.source)
+    || isManagedCopy(dest, skill.name);
 }
 
 // Check the `hara-video` command itself is reachable on PATH; print a hint if not.
 function checkOnPath() {
-  try { execFileSync("bash", ["-c", "command -v hara-video"], { stdio: "ignore" }); return true; }
-  catch { return false; }
+  const extensions = process.platform === "win32"
+    ? (process.env.PATHEXT || ".EXE;.CMD;.BAT;.COM").split(";")
+    : [""];
+  return (process.env.PATH || "").split(delimiter).some((dir) =>
+    dir && extensions.some((ext) => existsSync(join(dir, `hara-video${ext.toLowerCase()}`)) || existsSync(join(dir, `hara-video${ext.toUpperCase()}`))),
+  );
 }
 
-function printNextSteps(dest, label) {
+function printNextSteps(destRoot, label, skills) {
   console.log("");
   console.log(`Next steps (${label}):`);
   if (label === "Claude Code") {
@@ -54,9 +95,10 @@ function printNextSteps(dest, label) {
     console.log(`  • Then ask it to "video a landing page…", or invoke /video.`);
   } else {
     console.log(`  • Start a new Codex session so it discovers the skill under ~/.agents/skills/.`);
-    console.log(`  • Then ask it to "video a landing page…", or reference $video.`);
+    console.log(`  • Then ask it to create a video or publish an approved MP4, or reference $video / $video-publish.`);
   }
-  console.log(`  • The 'video' skill launches preview/export via the 'hara-video' command on your PATH.`);
+  console.log(`  • Installed: ${skills.map(({ name }) => name).join(", ")} under ${destRoot}.`);
+  console.log(`  • The 'video' skill launches preview/export via the 'hara-video' command on your PATH; publication adapters remain private user configuration.`);
   if (!checkOnPath()) {
     console.log("");
     console.log(`  ⚠ 'hara-video' is not on your PATH yet. Install it globally so the skill can call it:`);
@@ -64,73 +106,136 @@ function printNextSteps(dest, label) {
   }
 }
 
-function installSkillInto(dest, label) {
-  if (!existsSync(skillSrc)) {
-    console.error(`Cannot find the bundled skill at ${skillSrc} — is this a complete install of @nanhara/hara-video?`);
+function installSkillsInto(destRoot, label) {
+  const skills = selectedSkills();
+  const missing = skills.filter(({ source }) => !existsSync(join(source, "SKILL.md")));
+  if (missing.length) {
+    console.error(`Cannot find bundled skill(s): ${missing.map(({ source }) => source).join(", ")} — is this a complete install of @nanhara/hara-video?`);
     process.exit(1);
   }
   const useCopy = flag("copy");
   const force = flag("force");
-
-  // Already correctly linked → nothing to do (idempotent).
-  if (!useCopy && pointsAtSource(dest)) {
-    console.log(`✓ ${label}: already linked  (${dest} → ${skillSrc})`);
-    return printNextSteps(dest, label);
+  const entries = skills.map((skill) => ({ ...skill, dest: join(destRoot, skill.name) }));
+  const conflicts = entries.filter(({ dest, ...skill }) => pathEntryExists(dest) && !isManagedEntry(dest, skill));
+  if (conflicts.length && !force) {
+    for (const { dest } of conflicts) console.error(`✗ ${label}: ${dest} already exists and is not managed by hara-video.`);
+    console.error(`  Nothing was changed. Move the conflicting skill aside, choose --skill <name>, or use --force to replace it.`);
+    process.exit(1);
   }
 
-  // Something is already at `dest`. NEVER blind-delete a user's files.
-  if (existsSync(dest) || isBrokenSymlink(dest)) {
-    const isOurs = pointsAtSource(dest) || isBrokenOurSymlink(dest);
-    if (!force && !isOurs) {
-      console.error(`✗ ${label}: ${dest} already exists and is not managed by hara-video.`);
-      console.error(`  Refusing to overwrite. Re-run with --force to replace it, or move it aside first.`);
-      process.exit(1);
-    }
-    // Ours (stale link) or --force: safe to remove and recreate.
-    try { rmSync(dest, { recursive: true, force: true }); }
-    catch (e) { console.error(`✗ ${label}: could not remove existing ${dest}: ${e.message}`); process.exit(1); }
-  }
+  const unchanged = useCopy ? [] : entries.filter(({ dest, source }) => pointsAtSource(dest, source));
+  const changes = entries.filter((entry) => !unchanged.includes(entry));
+  for (const { dest, source } of unchanged) console.log(`✓ ${label}: already linked  (${dest} → ${source})`);
+  if (!changes.length) return printNextSteps(destRoot, label, skills);
 
-  mkdirSync(dirname(dest), { recursive: true });
+  mkdirSync(destRoot, { recursive: true });
+  const transactionDir = mkdtempSync(join(destRoot, ".hara-video-install-"));
+  const prepared = [];
   try {
-    if (useCopy) {
-      cpSync(skillSrc, dest, { recursive: true, dereference: true });
-      console.log(`✓ ${label}: copied skill → ${dest}`);
-    } else {
-      symlinkSync(skillSrc, dest, "dir");
-      console.log(`✓ ${label}: linked skill  ${dest} → ${skillSrc}`);
+    for (const [index, entry] of changes.entries()) {
+      const staged = join(transactionDir, `${entry.name}-${index}.new`);
+      const backup = join(transactionDir, `${entry.name}-${index}.backup`);
+      if (useCopy) {
+        cpSync(entry.source, staged, { recursive: true, dereference: true });
+        writeFileSync(join(staged, managedCopyMarker), `${JSON.stringify({ manager: "@nanhara/hara-video", skill: entry.name }, null, 2)}\n`, "utf8");
+      } else {
+        symlinkSync(entry.source, staged, "dir");
+      }
+      prepared.push({ ...entry, staged, backup, hadBackup: false, committed: false });
+    }
+
+    for (const item of prepared) {
+      if (pathEntryExists(item.dest)) {
+        renameSync(item.dest, item.backup);
+        item.hadBackup = true;
+      }
+      try {
+        renameSync(item.staged, item.dest);
+        item.committed = true;
+      } catch (error) {
+        if (item.hadBackup) renameSync(item.backup, item.dest);
+        throw error;
+      }
     }
   } catch (e) {
+    for (const item of [...prepared].reverse()) {
+      try {
+        if (item.committed) rmSync(item.dest, { recursive: true, force: true });
+        if (item.hadBackup && pathEntryExists(item.backup) && !pathEntryExists(item.dest)) renameSync(item.backup, item.dest);
+        rmSync(item.staged, { recursive: true, force: true });
+      } catch { /* retain the recovery path and report it below */ }
+    }
     console.error(`✗ ${label}: install failed: ${e.message}`);
+    const recoveries = prepared.filter(({ backup }) => pathEntryExists(backup)).map(({ backup }) => backup);
+    if (recoveries.length) console.error(`  Previous content is preserved at: ${recoveries.join(", ")}`);
+    else rmSync(transactionDir, { recursive: true, force: true });
     process.exit(1);
   }
-  printNextSteps(dest, label);
+  for (const item of prepared) {
+    if (item.hadBackup) {
+      try { rmSync(item.backup, { recursive: true, force: true }); }
+      catch (error) { console.error(`⚠ ${label}: installed ${item.name}, but could not remove backup ${item.backup}: ${error.message}`); }
+    }
+    console.log(useCopy
+      ? `✓ ${label}: copied ${item.name} → ${item.dest}`
+      : `✓ ${label}: linked ${item.name}  ${item.dest} → ${item.source}`);
+  }
+  try { rmSync(transactionDir, { recursive: true, force: true }); }
+  catch (error) { console.error(`⚠ ${label}: install succeeded, but temporary cleanup failed: ${error.message}`); }
+  printNextSteps(destRoot, label, skills);
 }
 
-function uninstallSkillFrom(dest, label) {
-  if (!existsSync(dest) && !isBrokenSymlink(dest)) {
-    console.log(`${label}: nothing installed at ${dest}.`);
+function uninstallSkillsFrom(destRoot, label) {
+  const skills = selectedSkills();
+  const entries = skills.map((skill) => ({ ...skill, dest: join(destRoot, skill.name) }));
+  const existing = entries.filter(({ dest }) => pathEntryExists(dest));
+  if (!existing.length) {
+    console.log(`${label}: no selected hara-video skills are installed under ${destRoot}.`);
     return;
   }
-  const ours = pointsAtSource(dest) || isBrokenOurSymlink(dest);
-  if (!ours && !flag("force")) {
-    console.error(`✗ ${label}: ${dest} is not a hara-video link (looks like your own files). Not removing.`);
-    console.error(`  If you really want it gone, remove it yourself or re-run with --force.`);
+  const conflicts = existing.filter(({ dest, ...skill }) => !isManagedEntry(dest, skill));
+  if (conflicts.length && !flag("force")) {
+    for (const { dest } of conflicts) console.error(`✗ ${label}: ${dest} is not managed by hara-video (looks like your own files).`);
+    console.error(`  Nothing was removed. Remove it yourself, choose --skill <name>, or re-run with --force.`);
     process.exit(1);
   }
-  try { rmSync(dest, { recursive: true, force: true }); console.log(`✓ ${label}: removed ${dest}`); }
-  catch (e) { console.error(`✗ ${label}: could not remove ${dest}: ${e.message}`); process.exit(1); }
+  const transactionDir = mkdtempSync(join(destRoot, ".hara-video-uninstall-"));
+  const moved = [];
+  try {
+    for (const [index, entry] of existing.entries()) {
+      const retained = join(transactionDir, `${entry.name}-${index}.removed`);
+      renameSync(entry.dest, retained);
+      moved.push({ ...entry, retained });
+    }
+  } catch (e) {
+    for (const item of [...moved].reverse()) {
+      try {
+        if (!pathEntryExists(item.dest) && pathEntryExists(item.retained)) renameSync(item.retained, item.dest);
+      } catch { /* preserve the retained path and report it below */ }
+    }
+    console.error(`✗ ${label}: uninstall failed before completion: ${e.message}`);
+    const recoveries = moved.filter(({ retained }) => pathEntryExists(retained)).map(({ retained }) => retained);
+    if (recoveries.length) console.error(`  Previous content is preserved at: ${recoveries.join(", ")}`);
+    else rmSync(transactionDir, { recursive: true, force: true });
+    process.exit(1);
+  }
+  try { rmSync(transactionDir, { recursive: true, force: true }); }
+  catch (error) {
+    console.error(`✗ ${label}: skills were detached, but cleanup failed; recoverable content remains at ${transactionDir}: ${error.message}`);
+    process.exit(1);
+  }
+  for (const { dest, name } of existing) console.log(`✓ ${label}: removed ${name} (${dest})`);
 }
 
 
 function usage() {
   console.log(`hara-video — local helper for the video plugin
 
-  hara-video install    [--claude|--codex]  install the video skill into a CLI
+  hara-video install    [--claude|--codex]  install the video + video-publish skills into a CLI
                                             (no flag) → register as a hara plugin
-                                            --claude  → link skills/video → ~/.claude/skills/video
-                                            --codex   → link skills/video → ~/.agents/skills/video
-                          add --copy to copy instead of symlink · --force to replace an existing dir
+                                            --claude  → link both under ~/.claude/skills/
+                                            --codex   → link both under ~/.agents/skills/
+                          add --skill <name> to select one · --copy to copy · --force to replace
   hara-video uninstall  [--claude|--codex]  undo the matching install
   hara-video init [koubo|promo|kepu] [dir]  scaffold a project from a seed (default: koubo → ./video)
   hara-video edit [dir]                     open the live web preview for editing (background server +
@@ -146,15 +251,23 @@ Engine: HyperFrames (Apache-2.0, npx hyperframes). The skill drives it; this hel
 }
 
 if (cmd === "install") {
-  if (flag("claude")) installSkillInto(claudeSkillDir(), "Claude Code");
-  else if (flag("codex")) installSkillInto(codexSkillDir(), "Codex");
+  if (flag("claude")) installSkillsInto(claudeSkillsDir(), "Claude Code");
+  else if (flag("codex")) installSkillsInto(codexSkillsDir(), "Codex");
   else {
+    if (argVal(["--skill"])) {
+      console.error("Hara registers the package as one plugin, so --skill is only available with --claude or --codex.");
+      process.exit(2);
+    }
     const r = spawnSync("hara", ["plugin", "add", `file:${root}`], { stdio: "inherit" });
-    if (r.error) console.error("Could not run `hara` — install it (npm i -g @nanhara/hara) or use --claude / --codex.");
+    if (r.error) {
+      console.error("Could not run `hara` — install it (npm i -g @nanhara/hara) or use --claude / --codex.");
+      process.exit(1);
+    }
+    process.exit(r.status ?? 1);
   }
 } else if (cmd === "uninstall") {
-  if (flag("claude")) uninstallSkillFrom(claudeSkillDir(), "Claude Code");
-  else if (flag("codex")) uninstallSkillFrom(codexSkillDir(), "Codex");
+  if (flag("claude")) uninstallSkillsFrom(claudeSkillsDir(), "Claude Code");
+  else if (flag("codex")) uninstallSkillsFrom(codexSkillsDir(), "Codex");
   else console.log("For hara: `hara plugin remove video`. For others: --claude / --codex.");
 } else if (cmd === "doctor") {
   const check = (name, cmd, args) => {

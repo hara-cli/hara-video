@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "name": "studio",
+  "ledger": ".hara/video-publish/ledger.jsonl",
+  "defaults": {
+    "visibility": "private",
+    "timeoutMinutes": 45
+  },
+  "platforms": {
+    "example": {
+      "accountLabel": "Studio account",
+      "expectedIdentity": {
+        "accountId": "replace-with-public-account-id"
+      },
+      "adapter": {
+        "command": ["video-publish-example"]
+      },
+      "credentialHints": {
+        "environment": ["EXAMPLE_UPLOAD_TOKEN"],
+        "loginCommand": ["video-publish-example", "login"]
+      },
+      "allowedVisibility": ["private", "unlisted", "public"],
+      "timeoutMinutes": 45
+    }
+  }
+}

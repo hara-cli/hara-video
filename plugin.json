@@ -1,7 +1,7 @@
 {
   "name": "video",
-  "version": "0.4.2",
-  "description": "Agent-driven video production for hara, Claude Code, and Codex — scripted compositions, pluggable image and voice backends, word-level captions, live HyperFrames preview, and deterministic MP4 rendering with curated templates and platform presets.",
+  "version": "0.5.0",
+  "description": "Agent-driven video production and safe distribution for Hara, Claude Code, and Codex — deterministic rendering plus profile-isolated, identity-checked, duplicate-safe publication workflows.",
   "skills": ["skills"],
   "bin": { "hara-video": "bin/hara-video.mjs" }
 }

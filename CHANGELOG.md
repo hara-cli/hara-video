@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.0 - 2026-07-15
+
+### Added
+
+- Ship an Agent Skills-compatible `video-publish` workflow for publishing finished videos through
+  private, profile-scoped adapters with remote account identity checks, explicit publication plans,
+  bounded execution, duplicate prevention, and redacted JSONL receipts.
+- Add a public profile schema, adapter contract, and secret-free example while keeping all brand
+  routing, account identifiers, credential locations, and tokens outside the package.
+
+### Changed
+
+- Install both the `video` and `video-publish` skills for Hara, Claude Code, and Codex.
+- Describe production and publication as separate stages: HyperFrames owns deterministic rendering;
+  platform adapters own credentials and external upload side effects.
+
 ## 0.4.2 - 2026-07-13
 
 ### Fixed
