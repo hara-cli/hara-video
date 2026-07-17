@@ -10,8 +10,12 @@
    prefer one of those over hand-rolling, restyle with your tokens.
 
 ## Chinese typography rules (hard requirements)
-- **Font stack (sans, default)**: `"PingFang SC", "Source Han Sans SC", "Noto Sans SC", sans-serif`
-  **Serif (文化/文艺调)**: `"Source Han Serif SC", "Noto Serif SC", "Songti SC", serif`
+- **Deterministic sans (default)**: `"Noto Sans SC", sans-serif`
+  **Deterministic serif (文化/文艺调)**: `"Noto Serif SC", serif`
+  HyperFrames resolves these Noto CJK families across render workers. For any other family, copy the
+  licensed WOFF2 into `assets/fonts/` and add an explicit `@font-face`; use `src: local("Exact Name")`
+  only when the output is intentionally host-specific. Never put PingFang/Source Han ahead of Noto
+  without declaring their own `@font-face`.
   Never let captions fall through to a Japanese-first CJK font (JP glyph variants read "off" to CN
   eyes — 直/骨/海 etc. differ).
 - **Line length**: vertical video ≤ **16 chars/line**, max 2 lines; horizontal ≤ 24 chars/line.

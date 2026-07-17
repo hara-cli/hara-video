@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -16,6 +16,7 @@ function makeCliSandbox(prefix, skillNames = []) {
   mkdirSync(home, { recursive: true });
   copyFileSync(new URL("../bin/hara-video.mjs", import.meta.url), cli);
   copyFileSync(new URL("../scripts/node-version.mjs", import.meta.url), join(app, "scripts", "node-version.mjs"));
+  copyFileSync(new URL("../scripts/audit-composition.mjs", import.meta.url), join(app, "scripts", "audit-composition.mjs"));
   for (const name of skillNames) {
     const source = join(app, "skills", name);
     mkdirSync(source, { recursive: true });
@@ -166,6 +167,66 @@ test("srt --words reaches the converter even when node is absent from PATH", () 
     assert.deepEqual(
       transcript.segments[0].words.map(({ word }) => word),
       ["南", "荒"],
+    );
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("verify fails closed at the strict audit instead of running later engine gates", () => {
+  const { sandbox, home, cli } = makeCliSandbox("hara-video-verify-");
+  const project = join(sandbox, "project");
+  try {
+    mkdirSync(project, { recursive: true });
+    writeFileSync(join(project, "index.html"), `<main data-composition-id="unfinished" data-start="0" data-duration="20">[REPLACE]</main>`);
+
+    const result = runCli(cli, home, "verify", project);
+
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stdout, /\[1\/4\] video quality audit/);
+    assert.doesNotMatch(result.stdout, /\[2\/4\] HyperFrames lint/);
+    assert.match(result.stderr, /verify stopped at video quality audit/);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("verify can use a preinstalled HyperFrames binary without invoking npx", { skip: process.platform === "win32" }, () => {
+  const { sandbox, home, cli } = makeCliSandbox("hara-video-engine-");
+  const project = join(sandbox, "project");
+  const calls = join(sandbox, "engine-calls.log");
+  const engine = join(sandbox, "hyperframes");
+  try {
+    mkdirSync(project, { recursive: true });
+    writeFileSync(join(project, "index.html"), `
+      <main data-composition-id="ready" data-start="0" data-duration="1">
+        <section data-visual-role="brand-cta" data-motion="reveal-mask"></section>
+      </main>
+    `);
+    for (const name of ["DESIGN.md", "SCRIPT.md", "STORYBOARD.md"]) {
+      writeFileSync(join(project, name), `# ${name}\n`);
+    }
+    writeFileSync(engine, `#!/usr/bin/env node
+      const { appendFileSync } = require("node:fs");
+      appendFileSync(process.env.HF_CALLS, process.argv.slice(2).join(" ") + "\\n");
+    `);
+    chmodSync(engine, 0o755);
+
+    const result = spawnSync(process.execPath, [cli, "verify", project], {
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        HARA_VIDEO_HYPERFRAMES_BIN: engine,
+        HF_CALLS: calls,
+      },
+      encoding: "utf8",
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(
+      readFileSync(calls, "utf8").trim().split("\n").map((line) => line.split(" ")[0]),
+      ["lint", "check", "snapshot"],
     );
   } finally {
     rmSync(sandbox, { recursive: true, force: true });

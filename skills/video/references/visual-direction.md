@@ -46,6 +46,18 @@ For every missing asset, write a concrete production instruction:
 - video prompt including action, camera, duration, continuity, and negative constraints;
 - diagram specification with nodes, labels, and animation order.
 
+For product videos, use this source order:
+
+1. real product UI/screen capture;
+2. designed HTML diagrams, cards, counters, and workflows;
+3. two or three coherent generated key images;
+4. generic stock-like AI imagery only when the story truly needs it.
+
+Generate one representative style frame first. Freeze its palette, lighting, lens, material, character
+and negative prompt before generating the remaining assets. Do not generate six unrelated full-screen
+AI pictures and call the cross-fades a video. Never ask an image model to draw product UI, logos, or
+readable text; compose those deterministically in HTML.
+
 ## 3. Design motion with intent
 
 Name motion recipes in `data-motion` so `hara-video audit` can inspect variety. Prefer two to four
@@ -82,3 +94,6 @@ Before editing HTML, verify the storyboard:
 - audio, caption, scene, and root duration derive from the same timing source;
 - the ending and CTA have a designed visual state;
 - any music-only tail is explicitly timed and justified.
+- a representative style frame proves the visual system before bulk asset generation;
+- generated assets share a continuity prefix and every full-screen still has an internal camera move,
+  mask, crop, parallax, annotation, or foreground interaction.

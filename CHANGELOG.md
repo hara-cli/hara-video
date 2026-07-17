@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.1 - 2026-07-18
+
+### Fixed
+
+- Make all official seeds use HyperFrames-resolved Noto CJK fonts so a new project no longer starts with
+  `font_family_without_font_face`.
+- Run HyperFrames through the same Node installation as `hara-video`, avoiding stale system Node/npm
+  pairs that made the CLI appear missing or broke preview startup.
+- Allow network-isolated or preinstalled environments to select an absolute HyperFrames executable with
+  `HARA_VIDEO_HYPERFRAMES_BIN`, while keeping same-Node `npx` as the zero-config default.
+
+### Added
+
+- Add `hara-video verify [dir]`, a bounded fail-closed gate that runs strict video audit, lint, runtime
+  checks, and snapshots in order and stops at the first failed stage.
+- Add a two-repair-pass circuit breaker, style-frame/continuity gate, generated-asset budget, and product
+  UI-first visual guidance to the video Skill.
+
 ## 0.6.0 - 2026-07-17
 
 ### Added

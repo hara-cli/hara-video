@@ -7,7 +7,8 @@
   :root{
     --bg0:#090b11; --bg1:#151b2d; --panel:rgba(21,27,45,.78);
     --ink:#f6f8ff; --muted:#9ca8c7; --accent:#6ee7ff; --hot:#ffcf5a;
-    --font-sans:"PingFang SC","Source Han Sans SC","Noto Sans SC",sans-serif;
+    /* Noto Sans SC is resolved deterministically by HyperFrames across render workers. */
+    --font-sans:"Noto Sans SC",sans-serif;
   }
   *{margin:0;box-sizing:border-box}
   #stage{position:relative;width:1080px;height:1920px;overflow:hidden;background:linear-gradient(155deg,var(--bg0),var(--bg1));font-family:var(--font-sans);color:var(--ink)}

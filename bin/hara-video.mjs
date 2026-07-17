@@ -88,6 +88,79 @@ function checkOnPath() {
   );
 }
 
+function runtimeEnv() {
+  const runtimeBin = dirname(process.execPath);
+  const path = process.env.PATH ? `${runtimeBin}${delimiter}${process.env.PATH}` : runtimeBin;
+  return { ...process.env, PATH: path };
+}
+
+function npxExecutable() {
+  const local = join(dirname(process.execPath), process.platform === "win32" ? "npx.cmd" : "npx");
+  return existsSync(local) ? local : (process.platform === "win32" ? "npx.cmd" : "npx");
+}
+
+function hyperFramesInvocation(args = []) {
+  const configured = process.env.HARA_VIDEO_HYPERFRAMES_BIN?.trim();
+  if (configured) return { command: configured, args };
+  return {
+    command: npxExecutable(),
+    args: ["--yes", "hyperframes", ...args],
+  };
+}
+
+function verifyProject(target) {
+  const project = resolve(target || ".");
+  if (!existsSync(project)) {
+    console.error(`hara-video verify: no such project: ${project}`);
+    return 2;
+  }
+  const hyperframes = (args) => hyperFramesInvocation(args);
+  const steps = [
+    {
+      label: "video quality audit",
+      command: process.execPath,
+      args: [join(root, "scripts", "audit-composition.mjs"), project, "--strict"],
+      timeout: 30_000,
+    },
+    {
+      label: "HyperFrames lint",
+      ...hyperframes(["lint", project]),
+      timeout: 90_000,
+    },
+    {
+      label: "HyperFrames runtime/layout/motion check",
+      ...hyperframes(["check", "--strict", "--at-transitions", project]),
+      timeout: 180_000,
+    },
+    {
+      label: "HyperFrames snapshots",
+      ...hyperframes(["snapshot", project]),
+      timeout: 180_000,
+    },
+  ];
+  for (const [index, step] of steps.entries()) {
+    console.log(`\n[${index + 1}/${steps.length}] ${step.label}`);
+    const result = spawnSync(step.command, step.args, {
+      stdio: "inherit",
+      env: runtimeEnv(),
+      timeout: step.timeout,
+    });
+    if (result.error) {
+      const timedOut = result.error.code === "ETIMEDOUT";
+      console.error(`\n✗ verify stopped at ${step.label}: ${timedOut ? `timed out after ${Math.round(step.timeout / 1000)}s` : result.error.message}`);
+      console.error("  Fix this stage once, then re-run `hara-video verify`. Do not skip ahead to preview or render.");
+      return 1;
+    }
+    if ((result.status ?? 1) !== 0) {
+      console.error(`\n✗ verify stopped at ${step.label} (exit ${result.status ?? "signal"}).`);
+      console.error("  Fix the reported codes once, then re-run `hara-video verify`. If the same code remains after two repair passes, checkpoint and report the blocker instead of looping.");
+      return result.status ?? 1;
+    }
+  }
+  console.log(`\n✓ video verified — audit, lint, runtime/layout/motion, and snapshots all passed: ${project}`);
+  return 0;
+}
+
 function printNextSteps(destRoot, label, skills) {
   console.log("");
   console.log(`Next steps (${label}):`);
@@ -249,9 +322,11 @@ function usage() {
   hara-video audit [file|dir] [--strict]    audit design artifacts, visual density, motion variety,
                                             asset references, and audio/caption/composition timing
                           add --json for machine-readable output; --strict also rejects warnings
+  hara-video verify [dir]                   fail-closed gate: strict audit → lint → check → snapshots
   hara-video srt <file.srt> [--words]       SRT → HyperFrames caption JSON (stdout)
 
-Engine: HyperFrames (Apache-2.0, npx hyperframes). The skill drives it; this helper just installs/checks.`);
+Engine: HyperFrames (Apache-2.0, npx hyperframes). The skill drives it; this helper just installs/checks.
+Offline/preinstalled override: HARA_VIDEO_HYPERFRAMES_BIN=/absolute/path/to/hyperframes`);
 }
 
 if (cmd === "install") {
@@ -275,7 +350,7 @@ if (cmd === "install") {
   else console.log("For hara: `hara plugin remove video`. For others: --claude / --codex.");
 } else if (cmd === "doctor") {
   const check = (name, cmd, args) => {
-    try { execFileSync(cmd, args, { stdio: "ignore", timeout: 15000 }); console.log(`  ✓ ${name}`); return true; }
+    try { execFileSync(cmd, args, { stdio: "ignore", timeout: 15000, env: runtimeEnv() }); console.log(`  ✓ ${name}`); return true; }
     catch { console.log(`  ✗ ${name} — not found`); return false; }
   };
   console.log("hara-video doctor:");
@@ -285,7 +360,12 @@ if (cmd === "install") {
     ? `  ✓ Node v${nodeVersion} (>=22)`
     : `  ✗ Node v${nodeVersion} — Node >=22 is required`);
   const ff = check("ffmpeg", "ffmpeg", ["-version"]);
-  const hf = check("hyperframes (npx)", "npx", ["--yes", "hyperframes", "--version"]);
+  const hfCommand = hyperFramesInvocation(["--version"]);
+  const hf = check(
+    process.env.HARA_VIDEO_HYPERFRAMES_BIN ? "hyperframes (configured)" : "hyperframes (npx)",
+    hfCommand.command,
+    hfCommand.args,
+  );
   if (!nodeOk) console.log("    install: https://nodejs.org/ or use a version manager such as nvm");
   if (!ff) console.log("    install: brew install ffmpeg");
   if (!hf) console.log("    hyperframes will be fetched on first use (npx hyperframes init)");
@@ -324,9 +404,11 @@ if (cmd === "install") {
   console.log(`✓ scaffolded a "${which}" project → ${dir}`);
   console.log(`  1. act as video designer: complete DESIGN.md, SCRIPT.md, and STORYBOARD.md`);
   console.log(`  2. create the storyboard assets under ${join(dir, "assets")}/, then compose index.html`);
-  console.log(`  3. hara-video audit ${dir} --strict · npx hyperframes lint ${dir} · npx hyperframes check ${dir}`);
+  console.log(`  3. hara-video verify ${dir} (strict audit → lint → check → snapshots; fail closed)`);
   console.log(`  4. hara-video edit ${dir} for approval; render only after the user approves the preview`);
   console.log(`  (in an agent: just ask it to "make a ${which} video about …" — the video skill drives all of this)`);
+} else if (cmd === "verify") {
+  process.exit(verifyProject(positional() || "."));
 } else if (cmd === "audit") {
   const target = positional() || ".";
   const args = [join(root, "scripts", "audit-composition.mjs"), target];
@@ -360,7 +442,13 @@ if (cmd === "install") {
     const logPath = join(tmpdir(), `hara-video-preview-${process.pid}.log`);
     const out = openSync(logPath, "a");
     const extra = rest.filter((a) => a.startsWith("--"));
-    const child = spawn("npx", ["--yes", "hyperframes", "preview", ...extra], { cwd: dir, detached: true, stdio: ["ignore", out, out] });
+    const hfCommand = hyperFramesInvocation(["preview", ...extra]);
+    const child = spawn(hfCommand.command, hfCommand.args, {
+      cwd: dir,
+      detached: true,
+      stdio: ["ignore", out, out],
+      env: runtimeEnv(),
+    });
     child.on("error", (e) => { console.error(`hara-video edit: could not start preview — ${e.message}`); process.exit(1); });
     child.unref();
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

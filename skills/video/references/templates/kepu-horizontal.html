@@ -5,8 +5,9 @@
 <style>
   :root{
     --bg:#f7f5f0; --ink:#1c1a17; --accent:#b0322a;   /* [REPLACE] editorial tokens */
-    --font-serif:"Source Han Serif SC","Noto Serif SC","Songti SC",serif;
-    --font-sans:"PingFang SC","Source Han Sans SC","Noto Sans SC",sans-serif;
+    /* Noto CJK families are resolved deterministically by HyperFrames across render workers. */
+    --font-serif:"Noto Serif SC",serif;
+    --font-sans:"Noto Sans SC",sans-serif;
   }
   *{margin:0;box-sizing:border-box}
   #stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--bg);font-family:var(--font-sans);color:var(--ink)}

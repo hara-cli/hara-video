@@ -25,6 +25,9 @@ use generated imagery or clips as ingredients inside that composition.
 
 Run `hara-video doctor` once per session. Require Node 22+, ffmpeg, and
 `npx hyperframes --version`. If a check fails, explain the concrete fix before authoring.
+Do not hand-write a replacement scaffold when `hara-video` or HyperFrames is missing: fix the same-Node
+PATH/runtime first, then run the official initializer. A missing prerequisite is a blocker, not permission
+to bypass the production contract.
 
 ## Production contract
 
@@ -65,7 +68,8 @@ Before writing composition code:
 2. Choose palette, type, depth/texture, caption treatment, camera/transition grammar, and pacing curve.
 3. Choose coherent motion recipes.
 4. Design the hook, proof/turn, payoff, and CTA as visual states.
-5. Show the concise direction to the user when it materially affects the result.
+5. Produce one representative style frame and freeze the continuity tokens before bulk generation.
+6. Show the concise direction to the user when it materially affects the result.
 
 Do not interpret “dynamic” as constant zooming. Make motion reveal meaning, guide focus, compare states,
 or connect evidence.
@@ -94,6 +98,11 @@ Then complete asset coverage. Capture, source, or generate missing assets before
 
 Do not silently invent licensed media provenance. If a backend or asset is unavailable, stop at a clear
 placeholder plan rather than pretending the video is finished.
+
+For product promos, prefer real UI, deterministic HTML graphics, diagrams, counters, and annotations.
+Default to no more than three generated key images; reuse them with purposeful crops, masks, parallax,
+foreground cards, and camera movement. Generate independent approved assets in one batch, not one
+model/tool round per image. Never generate readable product UI or captions inside an image.
 
 ### 5. Produce voice and one timing source
 
@@ -133,18 +142,20 @@ scene system plus theme tokens is better than cloning one full-video template fo
 
 ### 7. Run quality and engine gates
 
-Run all gates before asking for preview approval:
+Run the single fail-closed gate before asking for preview approval:
 
 ```bash
-hara-video audit . --strict
-npx hyperframes lint .
-npx hyperframes check .
-npx hyperframes snapshot .
+hara-video verify .
 ```
 
-Use `check`, not the deprecated `validate`. Pass a project directory to project-level commands. Fix every
-audit error and warning; inspect snapshots at the hook, every scene boundary, the payoff, and the end.
-Also run the engine's overflow/clipping inspection command when available.
+It runs strict design/timing audit, HyperFrames lint, runtime/layout/motion/contrast check, and snapshots
+in order, and stops on the first failed stage. Use `check`, not deprecated `validate`.
+
+Apply one cohesive repair pass for all reported codes, then run `hara-video verify .` once more. If the
+same code remains after two repair passes, stop, preserve the artifacts/checklist, and report that exact
+blocker. Never keep rewriting the whole HTML, never increase Hara's run deadline just to retry a failed
+gate, and never open preview after a partial green result. Inspect verified snapshots at the hook, every
+scene boundary, payoff, and end; run the engine overflow/clipping inspection when available.
 
 ### 8. Preview and edit
 
@@ -193,6 +204,9 @@ Treat each approved artifact as a resumable checkpoint:
 4. continue in a fresh turn when the run deadline is near.
 
 Do not try to design, source assets, compose, preview, and render inside one unbounded agent turn.
+When Hara warns that 20% of the current turn remains, finish only the current atomic stage, update the
+checklist, and return a checkpoint. Start the next expensive stage with `/continue`; do not begin a new
+image batch, transcription, verification, preview, or render near the deadline.
 
 ## Final self-critique
 

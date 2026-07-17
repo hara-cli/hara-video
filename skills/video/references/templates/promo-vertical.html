@@ -5,7 +5,8 @@
 <style>
   :root{
     --bg:#08090c; --ink:#ffffff; --accent:#22d3aa;   /* [REPLACE] brand tokens */
-    --font-sans:"PingFang SC","Source Han Sans SC","Noto Sans SC",sans-serif;
+    /* Noto Sans SC is resolved deterministically by HyperFrames across render workers. */
+    --font-sans:"Noto Sans SC",sans-serif;
   }
   *{margin:0;box-sizing:border-box}
   #stage{position:relative;width:1080px;height:1920px;overflow:hidden;background:var(--bg);font-family:var(--font-sans);color:var(--ink)}

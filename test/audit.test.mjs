@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -194,6 +194,14 @@ test("init scaffolds the designer, script, storyboard, composition, and asset la
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("all official seeds use deterministic Noto CJK families instead of undeclared host fonts", () => {
+  for (const name of ["koubo-vertical.html", "promo-vertical.html", "kepu-horizontal.html"]) {
+    const html = readFileSync(new URL(`../skills/video/references/templates/${name}`, import.meta.url), "utf8");
+    assert.match(html, /"Noto Sans SC",sans-serif/, name);
+    assert.doesNotMatch(html, /PingFang SC|Source Han (?:Sans|Serif) SC|Songti SC/, name);
   }
 });
 
