@@ -1,7 +1,7 @@
 {
   "name": "video",
-  "version": "0.5.0",
-  "description": "Agent-driven video production and safe distribution for Hara, Claude Code, and Codex — deterministic rendering plus profile-isolated, identity-checked, duplicate-safe publication workflows.",
+  "version": "0.6.0",
+  "description": "Video-designer workflow for Hara, Claude Code, and Codex — shot-by-shot visual direction, strict quality audit, deterministic rendering, and safe publication.",
   "skills": ["skills"],
   "bin": { "hara-video": "bin/hara-video.mjs" }
 }

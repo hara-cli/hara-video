@@ -1,98 +1,200 @@
 ---
 name: video
-description: Produce a real video from a plain-language brief — script → voice (local TTS) → captions → animated HTML composition → rendered MP4, on the open-source HyperFrames engine. USE WHEN the user wants to make/produce/render a video, a 口播/短视频/promo/explainer, turn a script or an article into video, or add captions/voiceover to a composition.
+description: Design and produce a finished video from a plain-language brief using HyperFrames — visual direction, approved script, shot-by-shot storyboard, sourced or generated footage/images, voice, captions, deterministic motion, preview, quality audit, and rendered MP4. Use when the user asks to make, redesign, animate, edit, preview, or render a 口播, short, promo, explainer, article-to-video, or other video.
 ---
 
-# video — your agent as a video producer
+# Video production
 
-You produce **finished MP4s** from plain-language briefs. The engine is **HyperFrames**
-(open-source, Apache-2.0: HTML + GSAP compositions, deterministically rendered via headless Chrome).
-You author only the **composition HTML + assets**; the engine owns preview, timing, and rendering.
+Produce a designed video, not a subtitle slideshow. Act as the video designer/director before acting as
+the editor. Persist the creative decisions in project artifacts so another turn can resume without
+guessing.
 
-**The three capabilities and how they relate (architecture, keep this straight):**
-1. **HTML-composed video (THE CORE)** — every video is an HTML composition you write. Captions,
-   typography, motion, timeline: all yours, all reproducible, zero render fees.
-2. **AI-generated assets (ASSET LANE)** — *ingredients* placed INSIDE the composition, never the final
-   video (generation is never the video; composition is):
-   - **Still images** (backgrounds, illustrations, icons) — `hara-video image "<prompt>" -o assets/x.png`.
-     Pluggable, BYO backend, no vendor lock-in: it uses `--cmd` / `HARA_VIDEO_IMAGE_CMD` (a `{prompt}`/
-     `{out}` command template — a local model like z-image, a codex-image wrapper, or any API script),
-     and auto-detects `z-image` on PATH. Place the result as an `<img>` / CSS background.
-   - **Video clips** — text-to-video APIs (Seedance / Kling / user's vendor, BYO key) as `<video>`
-     elements. See `references/recipes/ai-clips.md`.
-3. **Visual editing (CONVERSATIONAL)** — the user watches the live preview (HyperFrames studio,
-   hot-reload) and *tells you* the edits ("cut 2s off scene 2", "swap the BGM", "bigger captions").
-   You edit the HTML; the preview updates in seconds. There is no drag-and-drop timeline — you are
-   the editor.
+HyperFrames owns deterministic HTML/GSAP preview and rendering. Author the composition and its assets;
+use generated imagery or clips as ingredients inside that composition.
 
-## Prerequisites (check once per session)
+## Read before production
 
-- `npx hyperframes --version` works (first run downloads it). `ffmpeg` on PATH. If either fails:
-  run `hara-video doctor` and relay the fix to the user.
-- Engine mechanics (composition syntax, GSAP rules, data-attributes, CLI flags) are taught by the
-  **official HyperFrames skills** — if `~/.claude/skills/hyperframes*` or the npx-installed skills
-  are present, READ the relevant one before authoring; if not, suggest `npx skills add
-  heygen-com/hyperframes` once. Do NOT guess engine syntax from memory.
+- Read `references/platforms.md` for the target canvas and delivery settings.
+- Read `references/visual-direction.md` before visual design and storyboarding.
+- Read `references/captions.md` before building captions.
+- Read the matching `references/recipes/<type>.md`.
+- Read `references/recipes/ai-clips.md` when generated clips are justified.
+- Read the installed official HyperFrames authoring guidance when available. Do not guess engine syntax.
 
-## The staged workflow (follow in order; don't skip gates)
+## Prerequisites
 
-### Stage 1 — Brief (ask, don't assume)
-Ask up to 4 questions in ONE message: ① platform/aspect (抖音/视频号/B站/YouTube/Shorts — drives
-resolution + duration, see `references/platforms.md`) ② duration target ③ voice: TTS narration
-(which language) / no voice / user-provided audio ④ style direction (or offer 2-3 from
-`references/templates/`). If the user gave these already, don't re-ask.
+Run `hara-video doctor` once per session. Require Node 22+, ffmpeg, and
+`npx hyperframes --version`. If a check fails, explain the concrete fix before authoring.
 
-### Stage 2 — Script
-Write the narration/on-screen script FIRST, as text, and show it. Rules in
-`references/recipes/<type>.md` (koubo/promo/kepu — pick by video type). Wait for a nod on the
-script before spending render time (a bad script wastes everything downstream).
+## Production contract
 
-### Stage 3 — Voice + timing
-- TTS: local `npx hyperframes tts` (Kokoro, no key, Mandarin voices), OR `hara-video tts "<text>" -o
-  voice.wav` for a configured API TTS (`HARA_VIDEO_TTS_CMD` — 字节/Azure/ElevenLabs/…, BYO key), OR the
-  user's own audio. Same pluggable pattern as images: no vendor lock-in, local + API both open.
-- Timing: `npx hyperframes transcribe` (Whisper, word-level JSON) on the voice track.
-- Have an SRT instead? `hara-video srt subs.srt --words` converts it to the same JSON shape.
+Create the project with:
 
-### Stage 4 — Compose
-- Start from a seed — `hara-video init <koubo|promo|kepu> <dir>` scaffolds it (copies the template +
-  an assets/ dir); never author from a blank file. Then customize.
-- Bind the script's scenes to the timeline; captions per `references/captions.md` (Chinese
-  typography rules live there — font stacks, line length, punctuation).
-- `npx hyperframes lint <DIR>` (the PROJECT DIRECTORY, not a single `.html` — it lints the whole
-  project; passing a file errors "Not a directory") must pass, then `npx hyperframes inspect <file>` —
-  fix any text overflow/clipping it flags. These are your P0 gates. **Determinism traps** to avoid when
-  you edit the HTML (the seed is already clean — don't reintroduce them): every timeline element needs
-  `data-start` (and `data-duration`); **no `Math.random()`** — it breaks deterministic rendering, use a
-  fixed/seeded value; an `<audio>` needs `data-start`/`data-duration` and its `src` file must exist; keep
-  a single root `data-composition-id`. Lint after each edit — cheaper than discovering it at render.
+```bash
+hara-video init <koubo|promo|kepu> <dir>
+```
 
-### Stage 5 — Preview + precision edit loop
-**`hara-video edit .`** opens the live preview — it starts the server IN THE BACKGROUND and opens the
-browser. **NEVER run `npx hyperframes preview` in the foreground**: it's a long-running server that never
-returns and will hang you (this is the classic "video generation got stuck"). Then iterate:
-- **They describe it** ("cut 2s off scene 2", "bigger captions") → you edit the HTML → it hot-reloads.
-- **They point at it (precision):** when they CLICK an element in the browser and ask for a nudge
-  ("left 20px", "start 0.5s later", "bigger"), run `npx hyperframes preview --selection --json` to read
-  exactly what they clicked — `sourceFile`, `target`, `boundingBox` (current x/y/w/h), `currentTime` —
-  then edit that element precisely. The browser selection is your handle; you stay the editor (no
-  drag-and-drop timeline).
-Cheap loop — stay here until they're happy. Do NOT render until they approve.
+This creates:
 
-### Stage 6 — Render + deliver
-Render with the platform preset flags from `references/platforms.md`
-(e.g. `npx hyperframes render <comp> --output out.mp4 --fps 30 --quality high`).
-Use `--quality draft` for any intermediate check. Tell the user where the MP4 landed; offer a
-cover still (`npx hyperframes still` if available, else a frame export).
+- `DESIGN.md` — visual thesis, theme, motion grammar, pacing, constraints;
+- `SCRIPT.md` — approved narration/on-screen copy and timing source;
+- `STORYBOARD.md` — every beat, primary visual, asset, motion, transition, and audio cue;
+- `index.html` — deterministic composition scaffold;
+- `assets/{audio,images,video}/` — project media.
 
-### Self-critique (before you call it done)
-Score 1-5 on: hook (first 3s), caption readability at phone size, audio/visual sync, pacing dead
-spots, ending/CTA. Anything < 3 → fix before delivering.
+Never skip the three Markdown artifacts. The HTML seed is scaffolding, not the creative plan.
 
-## Hard rules
-- Deterministic HTML composition is the product. AI-generated clips are ingredients only.
-- Never render before the user approved script (Stage 2) and preview (Stage 5).
-- Chinese captions: follow `references/captions.md` — no full-width/half-width punctuation mixing,
-  ≤ 16 chars per caption line on vertical video.
-- Respect the engine's rules (muted videos, registered timelines, track indexes) — lint catches
-  most, but read the official skill, don't fight it.
+## Staged workflow
+
+### 1. Resolve the brief
+
+Use facts already supplied. Otherwise ask at most four questions in one message:
+
+1. platform/aspect and audience;
+2. target duration;
+3. voice/language and music expectations;
+4. style direction, or two to three relevant choices.
+
+Record the result in `DESIGN.md`.
+
+### 2. Design the video
+
+Before writing composition code:
+
+1. Write one visual thesis for the theme.
+2. Choose palette, type, depth/texture, caption treatment, camera/transition grammar, and pacing curve.
+3. Choose coherent motion recipes.
+4. Design the hook, proof/turn, payoff, and CTA as visual states.
+5. Show the concise direction to the user when it materially affects the result.
+
+Do not interpret “dynamic” as constant zooming. Make motion reveal meaning, guide focus, compare states,
+or connect evidence.
+
+### 3. Write and approve the script
+
+Write `SCRIPT.md` before voice or assets. Show the narration and key on-screen copy. Wait for approval
+before spending generation or render time. A revised script invalidates downstream timing; update the
+revision and regenerate timing.
+
+### 4. Build the storyboard and asset plan
+
+Create one `STORYBOARD.md` row for every substantive beat. Each row must state:
+
+- exact timing and narration/message;
+- one primary visual: footage, image, UI/code, diagram/map, data graphic, or a short kinetic-type beat;
+- asset path or an executable capture/search/generation prompt;
+- motion recipe, camera behavior, transition, and audio cue.
+
+Then complete asset coverage. Capture, source, or generate missing assets before composition:
+
+- still: `hara-video image "<production prompt>" -o assets/images/name.png`;
+- video: use the user's configured video backend, then place the result under `assets/video/`;
+- UI/code: record or build an inspectable mockup/diagram;
+- audio: place narration, BGM, and SFX under `assets/audio/`.
+
+Do not silently invent licensed media provenance. If a backend or asset is unavailable, stop at a clear
+placeholder plan rather than pretending the video is finished.
+
+### 5. Produce voice and one timing source
+
+Use final user audio, local HyperFrames TTS, or:
+
+```bash
+hara-video tts "<approved text>" -o assets/audio/voice.wav
+npx hyperframes transcribe assets/audio/voice.wav
+```
+
+Convert an existing SRT with:
+
+```bash
+hara-video srt subs.srt --words
+```
+
+Derive caption, scene, and composition timing from the same final narration/transcript. Never maintain
+an unrelated handwritten subtitle timeline. Document narration end, last caption end, last visual end,
+and composition end in `STORYBOARD.md`.
+
+### 6. Compose designed scenes
+
+Customize `index.html` from the scaffold:
+
+- bind every storyboard beat to a named scene/beat;
+- add `data-visual-role="<type>"` to each primary visual;
+- add `data-motion="<recipe>"` to planned moving beats;
+- use footage/images/diagrams/UI/data as the visual layer and captions as support;
+- drive all state from the registered timeline;
+- keep one composition root and explicit timing metadata;
+- avoid wall-clock timers and `Math.random()`;
+- keep audio/video assets timed, muted where required, and on explicit tracks;
+- mark voice with `data-audio-role="narration"` and supporting tracks as `music` or `sfx`.
+
+Prefer reusable HyperFrames components for captions, transitions, footage, and graphics. A reusable
+scene system plus theme tokens is better than cloning one full-video template for every topic.
+
+### 7. Run quality and engine gates
+
+Run all gates before asking for preview approval:
+
+```bash
+hara-video audit . --strict
+npx hyperframes lint .
+npx hyperframes check .
+npx hyperframes snapshot .
+```
+
+Use `check`, not the deprecated `validate`. Pass a project directory to project-level commands. Fix every
+audit error and warning; inspect snapshots at the hook, every scene boundary, the payoff, and the end.
+Also run the engine's overflow/clipping inspection command when available.
+
+### 8. Preview and edit
+
+Run:
+
+```bash
+hara-video edit .
+```
+
+It opens preview in the background and returns. Never launch the long-running preview server in the
+foreground. Iterate conversationally. For precision edits, let the user click an element and read the
+selection:
+
+```bash
+npx hyperframes preview --selection --json
+```
+
+Wait for explicit preview approval before final render.
+
+### 9. Render and deliver
+
+Render with the platform preset. Use draft quality only for intermediate checks. Re-run the strict audit
+and engine checks after the last edit, then render the approved composition. Report the MP4 path and offer
+a cover still.
+
+## Visual quality rules
+
+- Captions are accessibility/emphasis, never the entire scene.
+- A video longer than 10 seconds cannot consist only of centered text over a static background.
+- Give every substantive beat a non-caption primary visual.
+- In short-form work, change visual state roughly every 2–4 seconds unless meaningful action continues.
+- Use at least two coherent motion recipes for videos longer than 15 seconds.
+- Make the first three seconds combine a promise/question with visual proof.
+- Avoid repeated identical caption enter/exit animation across the whole video.
+- Do not let captions or composition continue beyond narration unless an intentional music-only beat is
+  designed and documented.
+- Follow the Chinese typography and safe-area rules in `references/captions.md`.
+
+## Long-task checkpointing
+
+Treat each approved artifact as a resumable checkpoint:
+
+1. finish and save the current stage;
+2. update a checklist with completed and next stages;
+3. report the next concrete action;
+4. continue in a fresh turn when the run deadline is near.
+
+Do not try to design, source assets, compose, preview, and render inside one unbounded agent turn.
+
+## Final self-critique
+
+Score 1–5 on hook, visual storytelling, mobile caption readability, audio/visual sync, motion variety,
+pacing, and ending/CTA. Fix any score below 3 before delivery.

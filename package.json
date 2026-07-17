@@ -1,7 +1,7 @@
 {
   "name": "@nanhara/hara-video",
-  "version": "0.5.0",
-  "description": "Produce and safely publish videos from your terminal — in Hara, Claude Code, or Codex. Includes deterministic HyperFrames production plus profile-isolated, duplicate-safe multi-platform publication workflows.",
+  "version": "0.6.0",
+  "description": "Design, audit, produce, and safely publish videos from Hara, Claude Code, or Codex — shot-by-shot visual direction plus deterministic HyperFrames rendering.",
   "type": "module",
   "bin": {
     "hara-video": "bin/hara-video.mjs"

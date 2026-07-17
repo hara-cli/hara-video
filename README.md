@@ -1,14 +1,19 @@
 # hara-video
 
 **Produce videos from your terminal — in [hara](https://github.com/hara-cli/hara), Claude Code, or Codex.**
-Describe the video; your agent scripts it, voices it (local TTS, no API key), captions it, and renders a
-real MP4 — on the open-source [HyperFrames](https://github.com/heygen-com/hyperframes) engine.
+Describe the video; your agent first designs its visual language and shot-by-shot storyboard, then
+scripts, sources or generates visual ingredients, voices, animates, previews, audits, and renders a real
+MP4 — on the open-source [HyperFrames](https://github.com/heygen-com/hyperframes) engine.
 
 The agent authors only the **composition HTML + assets**; the engine owns deterministic rendering.
 What the bundled skills add on top of the raw engine:
 
-- **A staged production workflow** with quality gates: brief → script (approve first) → voice+timing →
-  compose → live preview (conversational editing: "cut 2s off scene 2" → HTML edit → hot reload) → render.
+- **A staged production workflow** with quality gates: brief → visual direction → approved script →
+  shot-by-shot storyboard + asset coverage → voice/timing → compose → audit → live preview → render.
+- **A real video-designer gate** — `DESIGN.md`, `SCRIPT.md`, and `STORYBOARD.md` persist theme, pacing,
+  primary visual, motion, transition, asset prompt/path, and audio cue for every substantive beat.
+- **A strict composition audit** — catches subtitle-only edits, missing design artifacts/assets, static
+  ambient layers, low visual/motion variety, divergent caption JSON, and narration/caption duration drift.
 - **Curated seeds & recipes** — 口播 (talking-head shorts), product promo, 科普 explainer — each with
   script rules distilled from 120+ shipped episodes.
 - **Chinese-first captioning** — font stacks, line-length, punctuation and sync discipline, plus
@@ -50,10 +55,15 @@ CLI helpers:
 
 ```bash
 hara-video edit .                      # live web preview for editing (background server + browser; never blocks)
+hara-video audit . --strict            # reject undesigned, subtitle-only, or unsynchronized compositions
 hara-video image "<prompt>" -o x.png   # generate a still image via your configured backend
 hara-video tts   "<text>"   -o v.wav   # generate voice via your configured backend
 hara-video srt subs.srt --words        # SRT → HyperFrames caption JSON (CJK per-character beats)
 ```
+
+`hara-video init koubo ./video` now scaffolds the three approval/checkpoint documents, separate audio,
+image, and video asset lanes, and a layered dynamic composition seed. Captions remain an accessibility
+and emphasis layer; they are never accepted as the entire scene.
 
 ### Backends: images & voice (local *or* API — bring your own, no vendor lock-in)
 

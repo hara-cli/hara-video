@@ -5,6 +5,7 @@
 //   uninstall [--claude|--codex] undo (only ever touches our own link/copy)
 //   doctor                       check the engine chain (node / ffmpeg / hyperframes / chrome dl)
 //   init [koubo|promo|kepu] [dir]  scaffold a video project from a seed (copies a template + assets/ dir)
+//   audit [file|dir] [--strict]  reject subtitle-only, unsynced, or undesigned compositions
 //   srt <file.srt>               convert an SRT into HyperFrames caption JSON (stdout)
 import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readlinkSync, mkdirSync, mkdtempSync, symlinkSync, rmSync, cpSync, realpathSync, readFileSync, openSync, renameSync, writeFileSync } from "node:fs";
@@ -245,6 +246,9 @@ function usage() {
   hara-video tts   "<text>"   [-o out.wav]  generate voice via a pluggable backend
                                             (HARA_VIDEO_TTS_CMD; falls back to local hyperframes tts)
   hara-video doctor                         check Node >=22 / ffmpeg / hyperframes availability
+  hara-video audit [file|dir] [--strict]    audit design artifacts, visual density, motion variety,
+                                            asset references, and audio/caption/composition timing
+                          add --json for machine-readable output; --strict also rejects warnings
   hara-video srt <file.srt> [--words]       SRT → HyperFrames caption JSON (stdout)
 
 Engine: HyperFrames (Apache-2.0, npx hyperframes). The skill drives it; this helper just installs/checks.`);
@@ -287,23 +291,53 @@ if (cmd === "install") {
   if (!hf) console.log("    hyperframes will be fetched on first use (npx hyperframes init)");
   console.log(nodeOk && ff && hf ? "Ready." : "Fix the ✗ items above, then re-run.");
 } else if (cmd === "init") {
-  // Scaffold a ready-to-render HyperFrames project from one of our seeds. Fill the [REPLACE] marks +
-  // drop assets in — no blank-file starts, no manual cp of templates.
+  // Scaffold the complete designer → script → storyboard → composition contract. Full-video HTML seeds
+  // are only layout scaffolds; the three Markdown artifacts carry the creative decisions and timing truth.
   const seeds = { koubo: "koubo-vertical.html", promo: "promo-vertical.html", kepu: "kepu-horizontal.html" };
-  const which = positional() && seeds[positional()] ? positional() : "koubo";
-  const dirArg = rest.find((a) => !a.startsWith("--") && !seeds[a]);
+  const initArgs = rest.filter((a) => !a.startsWith("--"));
+  if (initArgs.length > 1 && !seeds[initArgs[0]]) {
+    console.error(`Unknown seed '${initArgs[0]}'. Choose koubo, promo, or kepu; or pass only one argument to use it as the default koubo output directory.`);
+    process.exit(2);
+  }
+  const which = seeds[initArgs[0]] ? initArgs[0] : "koubo";
+  const dirArg = seeds[initArgs[0]] ? initArgs[1] : initArgs[0];
   const dir = resolve(dirArg || "video");
   if (existsSync(join(dir, "index.html")) && !flag("force")) {
     console.error(`✗ ${join(dir, "index.html")} already exists — pass --force to overwrite, or choose another dir.`);
     process.exit(1);
   }
-  mkdirSync(join(dir, "assets"), { recursive: true });
+  mkdirSync(join(dir, "assets", "audio"), { recursive: true });
+  mkdirSync(join(dir, "assets", "images"), { recursive: true });
+  mkdirSync(join(dir, "assets", "video"), { recursive: true });
   cpSync(join(root, "skills", "video", "references", "templates", seeds[which]), join(dir, "index.html"));
+  const projectTemplates = {
+    "DESIGN.md": "DESIGN.template.md",
+    "SCRIPT.md": "SCRIPT.template.md",
+    "STORYBOARD.md": "STORYBOARD.template.md",
+  };
+  for (const [destination, source] of Object.entries(projectTemplates)) {
+    const output = join(dir, destination);
+    if (!existsSync(output)) {
+      cpSync(join(root, "skills", "video", "references", "project", source), output);
+    }
+  }
   console.log(`✓ scaffolded a "${which}" project → ${dir}`);
-  console.log(`  1. drop your voice.wav / bg image / bgm into ${join(dir, "assets")}/`);
-  console.log(`  2. edit index.html — replace every [REPLACE], bind scenes to the timeline`);
-  console.log(`  3. npx hyperframes lint ${dir} · preview ${dir} · render ${dir} --output out.mp4`);
+  console.log(`  1. act as video designer: complete DESIGN.md, SCRIPT.md, and STORYBOARD.md`);
+  console.log(`  2. create the storyboard assets under ${join(dir, "assets")}/, then compose index.html`);
+  console.log(`  3. hara-video audit ${dir} --strict · npx hyperframes lint ${dir} · npx hyperframes check ${dir}`);
+  console.log(`  4. hara-video edit ${dir} for approval; render only after the user approves the preview`);
   console.log(`  (in an agent: just ask it to "make a ${which} video about …" — the video skill drives all of this)`);
+} else if (cmd === "audit") {
+  const target = positional() || ".";
+  const args = [join(root, "scripts", "audit-composition.mjs"), target];
+  if (flag("strict")) args.push("--strict");
+  if (flag("json")) args.push("--json");
+  const r = spawnSync(process.execPath, args, { stdio: "inherit" });
+  if (r.error) {
+    console.error(`hara-video audit: could not start Node — ${r.error.message}`);
+    process.exit(1);
+  }
+  process.exit(r.status ?? 1);
 } else if (cmd === "srt") {
   const f = positional();
   if (!f) { console.error("usage: hara-video srt <file.srt> [--words]"); process.exit(2); }

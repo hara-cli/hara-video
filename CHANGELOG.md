@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.0 - 2026-07-17
+
+### Added
+
+- Add a mandatory video-designer and shot-by-shot storyboard stage with resumable `DESIGN.md`,
+  `SCRIPT.md`, and `STORYBOARD.md` project artifacts.
+- Add `hara-video audit [file|dir] [--strict] [--json]` to detect subtitle-only compositions, missing
+  assets/design artifacts, low visual and motion variety, static ambient layers, caption-source drift,
+  and narration/caption/composition duration mismatches.
+- Add reusable visual-direction guidance, asset-coverage planning, named deterministic motion recipes,
+  and long-task checkpointing.
+
+### Changed
+
+- Scaffold separate audio, image, and video asset lanes plus all design artifacts from `hara-video init`.
+- Replace the basic 口播 seed with a five-beat layered scene system and annotate all seeds with inspectable
+  visual roles, motion recipes, and explicit composition timing.
+- Require the strict design audit together with HyperFrames lint, check, snapshot, and preview approval
+  before rendering.
+
 ## 0.5.0 - 2026-07-15
 
 ### Added
