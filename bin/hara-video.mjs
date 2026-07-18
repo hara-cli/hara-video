@@ -6,6 +6,8 @@
 //   doctor                       check the engine chain (node / ffmpeg / hyperframes / chrome dl)
 //   init [koubo|promo|kepu] [dir]  scaffold a video project from a seed (copies a template + assets/ dir)
 //   audit [file|dir] [--strict]  reject subtitle-only, unsynced, or undesigned compositions
+//   verify [dir]                 strict audit → lint → check → snapshots
+//   edit [dir]                   verify, then open a detached live preview
 //   srt <file.srt>               convert an SRT into HyperFrames caption JSON (stdout)
 import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readlinkSync, mkdirSync, mkdtempSync, symlinkSync, rmSync, cpSync, realpathSync, readFileSync, openSync, renameSync, writeFileSync } from "node:fs";
@@ -106,6 +108,20 @@ function hyperFramesInvocation(args = []) {
     command: npxExecutable(),
     args: ["--yes", "hyperframes", ...args],
   };
+}
+
+function manifestVersion(path) {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    return typeof parsed?.version === "string" ? parsed.version : null;
+  } catch {
+    return null;
+  }
+}
+
+function installedHaraPluginVersion() {
+  const manifest = join(homedir(), ".hara", "plugins", "video", "plugin.json");
+  return existsSync(manifest) ? manifestVersion(manifest) : null;
 }
 
 function verifyProject(target) {
@@ -312,8 +328,9 @@ function usage() {
                           add --skill <name> to select one · --copy to copy · --force to replace
   hara-video uninstall  [--claude|--codex]  undo the matching install
   hara-video init [koubo|promo|kepu] [dir]  scaffold a project from a seed (default: koubo → ./video)
-  hara-video edit [dir]                     open the live web preview for editing (background server +
-                                            browser; never blocks). Extra flags pass to hyperframes preview.
+  hara-video edit [dir]                     run the complete verify gate, then open the live web preview
+                                            (background server + browser; never blocks).
+                                            Extra flags pass to hyperframes preview.
   hara-video image "<prompt>" [-o out.png]  generate a still image via a pluggable backend
                                             (--cmd / HARA_VIDEO_IMAGE_CMD template; auto-detects z-image)
   hara-video tts   "<text>"   [-o out.wav]  generate voice via a pluggable backend
@@ -366,10 +383,21 @@ if (cmd === "install") {
     hfCommand.command,
     hfCommand.args,
   );
+  const bundledVersion = manifestVersion(join(root, "plugin.json"));
+  const installedVersion = installedHaraPluginVersion();
+  const pluginCurrent = !installedVersion || !bundledVersion || installedVersion === bundledVersion;
+  if (installedVersion && bundledVersion) {
+    console.log(pluginCurrent
+      ? `  ✓ Hara video plugin v${installedVersion}`
+      : `  ✗ Hara video plugin v${installedVersion} is stale (installed CLI: v${bundledVersion})`);
+  }
   if (!nodeOk) console.log("    install: https://nodejs.org/ or use a version manager such as nvm");
   if (!ff) console.log("    install: brew install ffmpeg");
   if (!hf) console.log("    hyperframes will be fetched on first use (npx hyperframes init)");
-  console.log(nodeOk && ff && hf ? "Ready." : "Fix the ✗ items above, then re-run.");
+  if (!pluginCurrent) console.log("    refresh the copied Hara plugin: hara-video install");
+  const ready = nodeOk && ff && hf && pluginCurrent;
+  console.log(ready ? "Ready." : "Fix the ✗ items above, then re-run.");
+  if (!ready) process.exitCode = 1;
 } else if (cmd === "init") {
   // Scaffold the complete designer → script → storyboard → composition contract. Full-video HTML seeds
   // are only layout scaffolds; the three Markdown artifacts carry the creative decisions and timing truth.
@@ -436,12 +464,19 @@ if (cmd === "install") {
   // exits — running it in the FOREGROUND is the classic "hara hangs during video generation". So we spawn
   // it DETACHED (survives this process, never blocks the agent), let it open the browser itself, and tail
   // its log briefly to surface the URL. Extra flags (--port, --no-open, --browser-path) pass through.
-  const dir = resolve(positional() || ".");
+  const hasDir = Boolean(rest[0] && !rest[0].startsWith("-"));
+  const dir = resolve(hasDir ? rest[0] : ".");
   if (!existsSync(dir)) { console.error(`hara-video edit: no such directory: ${dir}`); process.exit(2); }
+  const verified = verifyProject(dir);
+  if (verified !== 0) {
+    console.error("\n✗ Preview blocked: this project has not passed the complete video gate.");
+    console.error("  Fix the reported stage and re-run `hara-video edit`; the preview server was not started.");
+    process.exit(verified);
+  }
   (async () => {
     const logPath = join(tmpdir(), `hara-video-preview-${process.pid}.log`);
     const out = openSync(logPath, "a");
-    const extra = rest.filter((a) => a.startsWith("--"));
+    const extra = rest.slice(hasDir ? 1 : 0);
     const hfCommand = hyperFramesInvocation(["preview", ...extra]);
     const child = spawn(hfCommand.command, hfCommand.args, {
       cwd: dir,

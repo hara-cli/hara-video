@@ -12,8 +12,12 @@ What the bundled skills add on top of the raw engine:
   shot-by-shot storyboard + asset coverage → voice/timing → compose → audit → live preview → render.
 - **A real video-designer gate** — `DESIGN.md`, `SCRIPT.md`, and `STORYBOARD.md` persist theme, pacing,
   primary visual, motion, transition, asset prompt/path, and audio cue for every substantive beat.
+- **Two Hara specialist reviewers** — `video-director` challenges the direction before composition and
+  `video-quality-reviewer` challenges the verified result before preview. Both are read-only; the main
+  agent owns edits and user approvals.
 - **A strict composition audit** — catches subtitle-only edits, missing design artifacts/assets, static
-  ambient layers, low visual/motion variety, divergent caption JSON, and narration/caption duration drift.
+  ambient layers, low visual/motion variety, divergent caption JSON, unapproved style frames,
+  storyboard/composition mismatch, and narration/caption/duration drift.
 - **Curated seeds & recipes** — 口播 (talking-head shorts), product promo, 科普 explainer — each with
   script rules distilled from 120+ shipped episodes.
 - **Chinese-first captioning** — font stacks, line-length, punctuation and sync discipline, plus
@@ -55,6 +59,8 @@ CLI helpers:
 
 ```bash
 hara-video edit .                      # live web preview for editing (background server + browser; never blocks)
+                                         # runs the complete verify gate first and refuses partial work
+hara-video verify .                    # audit → lint → runtime/layout/motion check → snapshots
 hara-video audit . --strict            # reject undesigned, subtitle-only, or unsynchronized compositions
 hara-video image "<prompt>" -o x.png   # generate a still image via your configured backend
 hara-video tts   "<text>"   -o v.wav   # generate voice via your configured backend

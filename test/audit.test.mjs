@@ -14,9 +14,11 @@ function project() {
 }
 
 function writeApprovedDocs(dir) {
-  for (const name of ["DESIGN.md", "SCRIPT.md", "STORYBOARD.md"]) {
-    writeFileSync(join(dir, name), `# ${name}\n\nStatus: approved\n`);
-  }
+  mkdirSync(join(dir, "assets", "images"), { recursive: true });
+  writeFileSync(join(dir, "assets", "images", "style-frame.png"), "approved-style-frame");
+  writeFileSync(join(dir, "DESIGN.md"), "# DESIGN.md\n\nStatus: approved\n\n- Style frame: assets/images/style-frame.png\n");
+  writeFileSync(join(dir, "SCRIPT.md"), "# SCRIPT.md\n\nStatus: approved\n");
+  writeFileSync(join(dir, "STORYBOARD.md"), "# STORYBOARD.md\n\nStatus: approved\n");
 }
 
 test("audit rejects a subtitle-only composition whose captions outlive narration", () => {
@@ -67,6 +69,42 @@ test("audit passes a designed, synchronized project with approved artifacts", ()
     assert.equal(result.pass, true, JSON.stringify(result.findings));
     assert.equal(result.metrics.visualBeats, 4, "nested SVGs do not double-count their annotated scene beats");
     assert.equal(result.metrics.motionRecipes, 4);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("audit rejects an unapproved slideshow whose duration and implemented beats drift from the plan", () => {
+  const dir = project();
+  try {
+    writeFileSync(join(dir, "DESIGN.md"), "# Design\n\n时长: ~30秒\n");
+    writeFileSync(join(dir, "SCRIPT.md"), "# Script (~30秒)\n\nStatus: draft\n");
+    writeFileSync(join(dir, "STORYBOARD.md"), `# Storyboard
+
+Status: draft
+
+| 镜号 | 时间 | 画面 |
+|---|---|---|
+| 1 | 0-5s | A |
+| 2 | 5-10s | B |
+| 3 | 10-15s | C |
+| 4 | 15-20s | D |
+| 5 | 20-25s | E |
+| 6 | 25-30s | F |
+`);
+    writeFileSync(join(dir, "index.html"), `<main data-composition-id="drift" data-start="0" data-duration="17.36">
+      <section data-start="0" data-duration="5"><img src="assets/a.png"></section>
+      <section data-start="5" data-duration="5"><img src="assets/b.png"></section>
+      <section data-start="10" data-duration="7.36"><img src="assets/c.png"></section>
+    </main>`);
+
+    const result = auditComposition(dir, { strict: true });
+    const codes = new Set(result.findings.map((item) => item.code));
+    assert.equal(result.pass, false);
+    assert.ok(codes.has("unapproved-design-artifact"));
+    assert.ok(codes.has("missing-approved-style-frame"));
+    assert.ok(codes.has("declared-duration-drift"));
+    assert.ok(codes.has("storyboard-composition-drift"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -202,6 +240,9 @@ test("all official seeds use deterministic Noto CJK families instead of undeclar
     const html = readFileSync(new URL(`../skills/video/references/templates/${name}`, import.meta.url), "utf8");
     assert.match(html, /"Noto Sans SC",sans-serif/, name);
     assert.doesNotMatch(html, /PingFang SC|Source Han (?:Sans|Serif) SC|Songti SC/, name);
+    for (const visual of html.matchAll(/<[^>]+\bdata-visual-role=["'][^"']+["'][^>]*>/g)) {
+      assert.match(visual[0], /\bdata-beat-id=["'][^"']+["']/, `${name}: every primary visual maps to a storyboard beat`);
+    }
   }
 });
 

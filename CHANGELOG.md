@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.7.0 - 2026-07-18
+
+### Added
+
+- Ship automatically discoverable `video-director` and `video-quality-reviewer` Hara roles. The video
+  Skill delegates bounded pre-production and pre-preview critiques when those roles are available, while
+  keeping all edits and approvals in the main gated agent.
+- Require a real approved style frame, approved production artifacts, matching script/composition
+  duration, and one inspectable `data-beat-id` per storyboard beat in the strict composition audit.
+- Detect a stale copied Hara plugin during `hara-video doctor` and print the exact
+  `hara-video install` refresh command.
+
+### Changed
+
+- Make `hara-video edit` run the complete fail-closed verification pipeline before it starts a preview.
+  An unfinished or inconsistent composition can no longer be presented as a completed video by the
+  supported workflow.
+- Map every official seed's primary visuals to storyboard beat ids and strengthen the Skill prompt
+  against direct HyperFrames preview bypasses.
+
 ## 0.6.1 - 2026-07-18
 
 ### Fixed

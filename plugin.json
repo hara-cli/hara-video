@@ -1,7 +1,8 @@
 {
   "name": "video",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Video-designer workflow for Hara, Claude Code, and Codex — shot-by-shot visual direction, strict quality audit, deterministic rendering, and safe publication.",
   "skills": ["skills"],
+  "agents": ["agents"],
   "bin": { "hara-video": "bin/hara-video.mjs" }
 }

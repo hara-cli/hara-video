@@ -1,6 +1,6 @@
 {
   "name": "@nanhara/hara-video",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Design, audit, produce, and safely publish videos from Hara, Claude Code, or Codex — shot-by-shot visual direction plus deterministic HyperFrames rendering.",
   "type": "module",
   "bin": {
@@ -10,6 +10,7 @@
     "bin",
     "scripts",
     "skills",
+    "agents",
     "plugin.json",
     "CHANGELOG.md"
   ],

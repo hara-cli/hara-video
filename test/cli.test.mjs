@@ -17,6 +17,7 @@ function makeCliSandbox(prefix, skillNames = []) {
   copyFileSync(new URL("../bin/hara-video.mjs", import.meta.url), cli);
   copyFileSync(new URL("../scripts/node-version.mjs", import.meta.url), join(app, "scripts", "node-version.mjs"));
   copyFileSync(new URL("../scripts/audit-composition.mjs", import.meta.url), join(app, "scripts", "audit-composition.mjs"));
+  copyFileSync(new URL("../plugin.json", import.meta.url), join(app, "plugin.json"));
   for (const name of skillNames) {
     const source = join(app, "skills", name);
     mkdirSync(source, { recursive: true });
@@ -31,6 +32,20 @@ function runCli(cli, home, ...args) {
     encoding: "utf8",
   });
 }
+
+test("npm package and Hara plugin ship the same version plus both specialist role directories", () => {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const plugin = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
+  assert.equal(plugin.version, pkg.version);
+  assert.deepEqual(plugin.agents, ["agents"]);
+  assert.ok(pkg.files.includes("agents"));
+  for (const role of ["video-director", "video-quality-reviewer"]) {
+    const content = readFileSync(new URL(`../agents/${role}.md`, import.meta.url), "utf8");
+    assert.match(content, new RegExp(`^---[\\s\\S]*name: ${role}\\n`));
+    assert.match(content, /^readOnly: true$/m);
+    assert.doesNotMatch(content, /disable-model-invocation:\s*true/i);
+  }
+});
 
 test("uninstall removes a managed symlink after its package target disappears", { skip: process.platform === "win32" }, () => {
   const { sandbox, app, home, cli } = makeCliSandbox("hara-video-cli-");
@@ -191,6 +206,56 @@ test("verify fails closed at the strict audit instead of running later engine ga
   }
 });
 
+test("edit refuses to start a preview until the complete verification gate passes", () => {
+  const { sandbox, home, cli } = makeCliSandbox("hara-video-edit-gate-");
+  const project = join(sandbox, "project");
+  try {
+    mkdirSync(project, { recursive: true });
+    writeFileSync(join(project, "index.html"), `<main data-composition-id="unfinished" data-start="0" data-duration="20">[REPLACE]</main>`);
+
+    const result = runCli(cli, home, "edit", project, "--no-open");
+
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stdout, /\[1\/4\] video quality audit/);
+    assert.match(result.stderr, /Preview blocked/);
+    assert.doesNotMatch(result.stdout + result.stderr, /preview running in the background/);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("doctor detects a stale copied Hara plugin and gives the exact refresh command", { skip: process.platform === "win32" }, () => {
+  const { sandbox, home, cli } = makeCliSandbox("hara-video-doctor-");
+  const fakeBin = join(sandbox, "fake-bin");
+  const engine = join(fakeBin, "hyperframes");
+  try {
+    mkdirSync(join(home, ".hara", "plugins", "video"), { recursive: true });
+    writeFileSync(join(home, ".hara", "plugins", "video", "plugin.json"), JSON.stringify({ name: "video", version: "0.1.0" }));
+    mkdirSync(fakeBin, { recursive: true });
+    for (const executable of [engine, join(fakeBin, "ffmpeg")]) {
+      writeFileSync(executable, "#!/bin/sh\nexit 0\n");
+      chmodSync(executable, 0o755);
+    }
+
+    const result = spawnSync(process.execPath, [cli, "doctor"], {
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        HARA_VIDEO_HYPERFRAMES_BIN: engine,
+      },
+      encoding: "utf8",
+    });
+
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stdout, /Hara video plugin v0\.1\.0 is stale/);
+    assert.match(result.stdout, /refresh the copied Hara plugin: hara-video install/);
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
 test("verify can use a preinstalled HyperFrames binary without invoking npx", { skip: process.platform === "win32" }, () => {
   const { sandbox, home, cli } = makeCliSandbox("hara-video-engine-");
   const project = join(sandbox, "project");
@@ -203,9 +268,11 @@ test("verify can use a preinstalled HyperFrames binary without invoking npx", { 
         <section data-visual-role="brand-cta" data-motion="reveal-mask"></section>
       </main>
     `);
-    for (const name of ["DESIGN.md", "SCRIPT.md", "STORYBOARD.md"]) {
-      writeFileSync(join(project, name), `# ${name}\n`);
-    }
+    mkdirSync(join(project, "assets", "images"), { recursive: true });
+    writeFileSync(join(project, "assets", "images", "style-frame.png"), "approved-style-frame");
+    writeFileSync(join(project, "DESIGN.md"), "# DESIGN.md\n\nStatus: approved\n\n- Style frame: assets/images/style-frame.png\n");
+    writeFileSync(join(project, "SCRIPT.md"), "# SCRIPT.md\n\nStatus: approved\n");
+    writeFileSync(join(project, "STORYBOARD.md"), "# STORYBOARD.md\n\nStatus: approved\n");
     writeFileSync(engine, `#!/usr/bin/env node
       const { appendFileSync } = require("node:fs");
       appendFileSync(process.env.HF_CALLS, process.argv.slice(2).join(" ") + "\\n");

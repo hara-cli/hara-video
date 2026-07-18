@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MAX_COMPOSITION_BYTES = 8 * 1024 * 1024;
@@ -155,6 +155,73 @@ function timelineDuration(html) {
 
 function finding(severity, code, message, fix) {
   return { severity, code, message, fix };
+}
+
+function isApprovedArtifact(content) {
+  return /^\s*Status\s*:\s*approved\s*$/im.test(content);
+}
+
+function documentedDuration(content) {
+  const patterns = [
+    /^\s*Target duration\s*:\s*~?\s*(\d+(?:\.\d+)?)\s*(?:s|seconds?|秒)?\s*$/im,
+    /(?:旁白文案|目标时长|视频时长|时长)[^\n]{0,24}?[(:：]\s*~?\s*(\d+(?:\.\d+)?)\s*(?:s|秒)/i,
+    /\(\s*~?\s*(\d+(?:\.\d+)?)\s*(?:s|秒)\s*\)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(content);
+    if (match) return Number(match[1]);
+  }
+  return null;
+}
+
+function canonicalBeatId(value) {
+  const text = String(value ?? "").trim().toLowerCase();
+  const numeric = /^0*(\d+)\b/.exec(text);
+  return numeric ? String(Number(numeric[1])) : text.replace(/\s+/g, "-");
+}
+
+function storyboardBeatIds(content) {
+  const lines = content.split(/\r?\n/);
+  let inTable = false;
+  const ids = [];
+  for (const line of lines) {
+    if (!line.trim().startsWith("|")) {
+      if (inTable && ids.length) break;
+      continue;
+    }
+    const cells = line.split("|").slice(1, -1).map((cell) => cell.trim());
+    if (!cells.length) continue;
+    if (!inTable) {
+      if (/^(?:beat|镜号|镜头|场景)$/i.test(cells[0])) inTable = true;
+      continue;
+    }
+    if (/^:?-{3,}:?$/.test(cells[0])) continue;
+    const id = canonicalBeatId(cells[0]);
+    if (id) ids.push(id);
+  }
+  return [...new Set(ids)];
+}
+
+function styleFramePath(content, projectDir) {
+  const match = /^\s*-\s*(?:Style frame|样式帧)\s*:\s*(.+?)\s*$/im.exec(content);
+  if (!match) return { error: "DESIGN.md does not declare `- Style frame: assets/images/style-frame.png`." };
+  const raw = match[1].trim().replace(/^`|`$/g, "");
+  if (!raw || raw.includes("[REPLACE]") || isAbsolute(raw) || /^(?:https?:|data:|blob:)/i.test(raw)) {
+    return { error: `DESIGN.md has an invalid local style-frame path: ${raw || "(empty)"}.` };
+  }
+  const path = resolve(projectDir, raw);
+  const rel = relative(projectDir, path);
+  if (rel === ".." || rel.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
+    return { error: "The approved style frame must stay inside the video project." };
+  }
+  if (!existsSync(path)) return { error: `The approved style frame is missing: ${raw}.` };
+  try {
+    const info = lstatSync(path);
+    if (!info.isFile() || info.size === 0) return { error: `The approved style frame is not a non-empty regular file: ${raw}.` };
+  } catch (error) {
+    return { error: `The approved style frame cannot be inspected: ${error instanceof Error ? error.message : String(error)}.` };
+  }
+  return { path };
 }
 
 function readCaptionSource(projectDir) {
@@ -410,6 +477,7 @@ export function auditComposition(input = ".", options = {}) {
 
   if (projectMode) {
     const missingDocs = REQUIRED_PROJECT_FILES.filter((name) => !existsSync(join(projectDir, name)));
+    const artifactContents = new Map();
     if (missingDocs.length) {
       findings.push(finding(
         "error",
@@ -422,11 +490,80 @@ export function auditComposition(input = ".", options = {}) {
       const path = join(projectDir, name);
       try {
         const content = boundedRead(path, MAX_SUPPORT_FILE_BYTES);
+        artifactContents.set(name, content);
         if (content.includes("[REPLACE]")) {
           findings.push(finding("error", "unfinished-design-artifact", `${name} still contains [REPLACE] placeholders.`, `Complete and approve ${name} before composition.`));
         }
+        if (!isApprovedArtifact(content)) {
+          findings.push(finding(
+            "error",
+            "unapproved-design-artifact",
+            `${name} is not marked \`Status: approved\`.`,
+            `Keep ${name} in draft until its production gate passes; then record the real approval instead of bypassing preview.`,
+          ));
+        }
       } catch (error) {
         findings.push(finding("error", "invalid-design-artifact", `${name}: ${error instanceof Error ? error.message : String(error)}.`, "Replace it with a bounded regular Markdown file."));
+      }
+    }
+
+    const design = artifactContents.get("DESIGN.md");
+    if (design) {
+      const styleFrame = styleFramePath(design, projectDir);
+      if (styleFrame.error) {
+        findings.push(finding(
+          "error",
+          "missing-approved-style-frame",
+          styleFrame.error,
+          "Create and approve one representative style frame before bulk asset generation; record its project-relative path in DESIGN.md.",
+        ));
+      }
+    }
+
+    const script = artifactContents.get("SCRIPT.md");
+    const targetDuration = script ? documentedDuration(script) : null;
+    if (targetDuration !== null && Math.abs(duration - targetDuration) > Math.max(1, targetDuration * 0.05)) {
+      findings.push(finding(
+        "error",
+        "declared-duration-drift",
+        `SCRIPT.md targets ${targetDuration.toFixed(2)}s, but the composition declares ${duration.toFixed(2)}s.`,
+        "Reconcile the final narration, script, storyboard rows, scene timings, captions, and composition duration from one timing source.",
+      ));
+    }
+
+    const storyboard = artifactContents.get("STORYBOARD.md");
+    const plannedBeats = storyboard ? storyboardBeatIds(storyboard) : [];
+    if (plannedBeats.length) {
+      const composedBeatIds = declaredVisualTags
+        .map((tag) => canonicalBeatId(tag.attrs["data-beat-id"]))
+        .filter(Boolean);
+      if (declaredVisualTags.length < plannedBeats.length) {
+        findings.push(finding(
+          "error",
+          "storyboard-composition-drift",
+          `STORYBOARD.md plans ${plannedBeats.length} beats, but the composition declares ${declaredVisualTags.length} primary visual beats.`,
+          "Implement every storyboard row as one inspectable primary visual with data-visual-role and data-beat-id.",
+        ));
+      }
+      if (declaredVisualTags.some((tag) => !String(tag.attrs["data-beat-id"] ?? "").trim())) {
+        findings.push(finding(
+          "warning",
+          "missing-beat-id",
+          "One or more declared primary visuals have no data-beat-id.",
+          "Map every data-visual-role element to its STORYBOARD.md beat with data-beat-id.",
+        ));
+      }
+      if (composedBeatIds.length) {
+        const composed = new Set(composedBeatIds);
+        const absent = plannedBeats.filter((id) => !composed.has(id));
+        if (absent.length) {
+          findings.push(finding(
+            "error",
+            "missing-storyboard-beats",
+            `Composition is missing storyboard beat id(s): ${absent.join(", ")}.`,
+            "Keep storyboard and composition beat ids in lockstep; do not silently drop the ending or intermediate scenes.",
+          ));
+        }
       }
     }
   }

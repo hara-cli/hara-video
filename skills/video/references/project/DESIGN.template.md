@@ -14,6 +14,12 @@ Status: draft
 This video makes **[REPLACE idea/emotion]** feel like **[REPLACE visual metaphor/world]** through
 **[REPLACE primary medium]**.
 
+## Approved style frame
+
+- Style frame: assets/images/style-frame.png
+- What this frame proves: [REPLACE composition, hierarchy, texture, caption, and motion-continuity intent]
+- Continuity tokens frozen after approval: [REPLACE]
+
 ## Theme system
 
 - Palette and contrast: [REPLACE]

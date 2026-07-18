@@ -47,6 +47,24 @@ This creates:
 
 Never skip the three Markdown artifacts. The HTML seed is scaffolding, not the creative plan.
 
+## Hara specialist gates
+
+When Hara lists `video-director` and `video-quality-reviewer` under `# Specialist roles`, use both for
+a new or substantially redesigned finished video. They are bounded read-only reviewers; the main agent
+still owns decisions, edits, approvals, and delivery.
+
+1. After drafting `DESIGN.md`, `SCRIPT.md`, and `STORYBOARD.md`, call `agent` with role
+   `video-director`. Give it only the brief, artifact paths, constraints, and desired verdict. Resolve
+   every `REVISE` finding before composition and record the accepted direction in the artifacts.
+2. After `hara-video verify .` has produced passing snapshots, call `agent` with role
+   `video-quality-reviewer`. Give it the artifact paths, composition path, verification result, and an
+   honest description of the inspected snapshots. Resolve every `REVISE` finding, verify again, and only
+   then open preview.
+
+Do not call both reviewers at the start, do not delegate editing, and do not ignore a gate verdict. If
+the host does not expose these roles, perform their checklists yourself and clearly label that fallback;
+never pretend a specialist or a visual inspection ran.
+
 ## Staged workflow
 
 ### 1. Resolve the brief
@@ -71,6 +89,10 @@ Before writing composition code:
 5. Produce one representative style frame and freeze the continuity tokens before bulk generation.
 6. Show the concise direction to the user when it materially affects the result.
 
+Save the approved style frame under `assets/images/style-frame.png` and record that exact relative path
+in `DESIGN.md`. Set `Status: approved` only after the user approves the design direction; never fabricate
+approval to satisfy a gate.
+
 Do not interpret “dynamic” as constant zooming. Make motion reveal meaning, guide focus, compare states,
 or connect evidence.
 
@@ -78,7 +100,7 @@ or connect evidence.
 
 Write `SCRIPT.md` before voice or assets. Show the narration and key on-screen copy. Wait for approval
 before spending generation or render time. A revised script invalidates downstream timing; update the
-revision and regenerate timing.
+revision and regenerate timing. Keep `Status: draft` until the user approves the script.
 
 ### 4. Build the storyboard and asset plan
 
@@ -104,6 +126,10 @@ Default to no more than three generated key images; reuse them with purposeful c
 foreground cards, and camera movement. Generate independent approved assets in one batch, not one
 model/tool round per image. Never generate readable product UI or captions inside an image.
 
+After the `video-director` returns `PASS` and its accepted corrections are recorded, mark
+`STORYBOARD.md` as `Status: approved`. A reviewer verdict does not replace the user's required design
+and script approvals.
+
 ### 5. Produce voice and one timing source
 
 Use final user audio, local HyperFrames TTS, or:
@@ -127,7 +153,7 @@ and composition end in `STORYBOARD.md`.
 
 Customize `index.html` from the scaffold:
 
-- bind every storyboard beat to a named scene/beat;
+- bind every storyboard beat to a named scene/beat with the matching `data-beat-id`;
 - add `data-visual-role="<type>"` to each primary visual;
 - add `data-motion="<recipe>"` to planned moving beats;
 - use footage/images/diagrams/UI/data as the visual layer and captions as support;
@@ -156,6 +182,9 @@ same code remains after two repair passes, stop, preserve the artifacts/checklis
 blocker. Never keep rewriting the whole HTML, never increase Hara's run deadline just to retry a failed
 gate, and never open preview after a partial green result. Inspect verified snapshots at the hook, every
 scene boundary, payoff, and end; run the engine overflow/clipping inspection when available.
+
+`hara-video edit` runs the same fail-closed verification again and refuses to start the preview server
+when any stage is red. Never bypass it with a direct `hyperframes preview` or `npx hyperframes preview`.
 
 ### 8. Preview and edit
 
